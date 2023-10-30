@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_TileStorageType;
@@ -25,8 +25,8 @@ interface
 uses
   i_CoordConverter,
   i_ContentTypeInfo,
-  i_StorageTypeAbilities,
-  i_MapVersionConfig,
+  i_TileStorageAbilities,
+  i_MapVersionFactory,
   i_TileInfoBasicMemCache,
   i_TileStorageTypeConfig,
   i_TileStorage;
@@ -34,8 +34,8 @@ uses
 type
   ITileStorageType = interface
     ['{EBB122FB-5382-49CA-A265-3BEA89694B0E}']
-    function GetInfo: IStorageTypeAbilities;
-    property Info: IStorageTypeAbilities read GetInfo;
+    function GetAbilities: ITileStorageTypeAbilities;
+    property Abilities: ITileStorageTypeAbilities read GetAbilities;
 
     function GetConfig: ITileStorageTypeConfig;
     property Config: ITileStorageTypeConfig read GetConfig;
@@ -44,6 +44,7 @@ type
     property MapVersionFactory: IMapVersionFactory read GetMapVersionFactory;
 
     function BuildStorage(
+      const AForceAbilities: ITileStorageAbilities;
       const AGeoConverter: ICoordConverter;
       const AMainContentType: IContentTypeInfoBasic;
       const APath: string;

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MainMapsConfig;
@@ -24,20 +24,25 @@ interface
 
 uses
   i_ActiveMapsConfig,
-  i_MapTypes,
+  i_MapTypeSet,
+  i_MapTypeSetBuilder,
+  i_MapTypeSetChangeable,
   u_ActivMapWithLayers;
 
 type
   TMainMapsConfig = class(TActivMapWithLayers, IMainMapsConfig)
   private
     FDefaultMapGUID: TGUID;
+    FActiveBitmapMapsSet: IMapTypeSetChangeable;
     FActiveBitmapLayersSet: IMapTypeSetChangeable;
     FActiveKmlLayersSet: IMapTypeSetChangeable;
   protected
+    function GetActiveBitmapMapsSet: IMapTypeSetChangeable;
     function GetActiveBitmapLayersSet: IMapTypeSetChangeable;
     function GetActiveKmlLayersSet: IMapTypeSetChangeable;
   public
     constructor Create(
+      const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
       const AMapsSet, ALayersSet: IMapTypeSet;
       const ADefaultMapGUID: TGUID
     );
@@ -47,12 +52,13 @@ implementation
 
 uses
   ActiveX,
-  u_MapTypeSet,
+  i_MapTypes,
   u_ActiveMapsSet;
 
 { TMainMapsConfig }
 
 constructor TMainMapsConfig.Create(
+  const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
   const AMapsSet, ALayersSet: IMapTypeSet;
   const ADefaultMapGUID: TGUID
 );
@@ -61,34 +67,43 @@ var
   VGUID: TGUID;
   i: Cardinal;
   VMapType: IMapType;
-  VBitmapLayersList: TMapTypeSet;
-  VKmlLayersList: TMapTypeSet;
+  VBitmapLayersList: IMapTypeSetBuilder;
+  VKmlLayersList: IMapTypeSetBuilder;
 begin
   FDefaultMapGUID := ADefaultMapGUID;
-  inherited Create(AMapsSet, ALayersSet);
+  inherited Create(False, AMapTypeSetBuilderFactory, AMapsSet, ALayersSet);
 
-  VBitmapLayersList := TMapTypeSet.Create(True);
-  VKmlLayersList := TMapTypeSet.Create(True);
+  VBitmapLayersList := AMapTypeSetBuilderFactory.Build(True);
+  VKmlLayersList := AMapTypeSetBuilderFactory.Build(True);
 
   VEnun := ALayersSet.GetIterator;
   while VEnun.Next(1, VGUID, i) = S_OK do begin
     VMapType := ALayersSet.GetMapTypeByGUID(VGUID);
-    if VMapType.MapType.IsBitmapTiles then begin
+    if VMapType.IsBitmapTiles then begin
       VBitmapLayersList.Add(VMapType);
     end;
-    if VMapType.MapType.IsKmlTiles then begin
+    if VMapType.IsKmlTiles then begin
       VKmlLayersList.Add(VMapType);
     end;
   end;
 
   FActiveBitmapLayersSet := TLayerSetChangeable.Create(
-    VBitmapLayersList,
+    AMapTypeSetBuilderFactory,
+    VBitmapLayersList.MakeCopy,
     LayerSetSelectNotyfier,
     LayerSetUnselectNotyfier
   );
 
+  FActiveBitmapMapsSet :=
+    TMapsSetChangeableByMainMapAndLayersSet.Create(
+      AMapTypeSetBuilderFactory,
+      GetActiveMap,
+      FActiveBitmapLayersSet
+    );
+
   FActiveKmlLayersSet := TLayerSetChangeable.Create(
-    VKmlLayersList,
+    AMapTypeSetBuilderFactory,
+    VKmlLayersList.MakeAndClear,
     LayerSetSelectNotyfier,
     LayerSetUnselectNotyfier
   );
@@ -100,6 +115,11 @@ end;
 function TMainMapsConfig.GetActiveBitmapLayersSet: IMapTypeSetChangeable;
 begin
   Result := FActiveBitmapLayersSet;
+end;
+
+function TMainMapsConfig.GetActiveBitmapMapsSet: IMapTypeSetChangeable;
+begin
+  Result := FActiveBitmapMapsSet;
 end;
 
 function TMainMapsConfig.GetActiveKmlLayersSet: IMapTypeSetChangeable;

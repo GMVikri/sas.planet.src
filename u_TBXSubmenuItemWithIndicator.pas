@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TBXSubmenuItemWithIndicator;
@@ -51,24 +51,33 @@ begin
   OnAdjustFont := Self.AdjustFont;
 end;
 
+function IsItemChecked(const AItem: TTBCustomItem): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 0 to AItem.Count - 1 do begin
+    if AItem.Items[I].Count > 0  then begin
+      Result := IsItemChecked(AItem.Items[I]);
+      if Result then begin
+        Break;
+      end;
+    end;
+    if AItem.Items[I].Checked then begin
+      Result := True;
+      Break;
+    end;
+  end;
+end;
+
 procedure TTBXSubmenuItemWithIndicator.AdjustFont(
   Item: TTBCustomItem;
   Viewer: TTBItemViewer;
   Font: TFont;
   StateFlags: Integer
 );
-var
-  VChildSelected: Boolean;
-  i: Integer;
 begin
-  VChildSelected := False;
-  for i := 0 to Self.Count - 1 do begin
-    if Self.Items[i].Checked then begin
-      VChildSelected := True;
-      Break;
-    end;
-  end;
-  if VChildSelected then begin
+  if IsItemChecked(Self) then begin
     Self.FontSettings.Bold := tsTrue;
   end else begin
     Self.FontSettings.Bold := tsDefault;

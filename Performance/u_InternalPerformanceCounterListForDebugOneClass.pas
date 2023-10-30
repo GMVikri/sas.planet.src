@@ -1,75 +1,58 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_InternalPerformanceCounterListForDebugOneClass;
 
 interface
 
 uses
-  ActiveX,
-  i_IDList,
   i_InternalPerformanceCounter,
   i_InternalPerformanceCounterListForDebug;
 
 type
-  TInternalPerformanceCounterListForDebugOneClass = class(TInterfacedObject, IInternalPerformanceCounterList, IInternalPerformanceCounterListForDebugOneClass)
+  TInternalPerformanceCounterListForDebugOneClass = class(TInterfacedObject, IInternalPerformanceCounterListForDebugOneClass)
   private
-    FClass: TClass;
     FCounterCreate: IInternalPerformanceCounter;
     FCounterDestroy: IInternalPerformanceCounter;
-  private
-    function GetName: string;
-
-    function GetStaticDataList: IIDInterfaceList;
-    procedure AppendStaticDataToList(const ADataList: IIDInterfaceList);
-    function GetEunm: IEnumUnknown;
-    function CreateAndAddNewCounter(const AName: string): IInternalPerformanceCounter;
-    function CreateAndAddNewSubList(const AName: string): IInternalPerformanceCounterList;
-    procedure AddSubList(const ASubList: IInternalPerformanceCounterList);
   private
     function GetCounterCreate: IInternalPerformanceCounter;
     function GetCounterDestroy: IInternalPerformanceCounter;
   public
     constructor Create(
-      AClass: TClass;
+      const ABaseName: string;
       const AFactory: IInternalPerformanceCounterFactory
     );
   end;
 
 implementation
 
-uses
-  u_EnumUnknownTwoItems,
-  u_IDInterfaceList;
-
 { TInternalPerformanceCounterListForDebugOneClass }
 
 constructor TInternalPerformanceCounterListForDebugOneClass.Create(
-  AClass: TClass;
+  const ABaseName: string;
   const AFactory: IInternalPerformanceCounterFactory
 );
 begin
   inherited Create;
-  FClass := AClass;
-  FCounterCreate := AFactory.Build('Create');
-  FCounterDestroy := AFactory.Build('Destroy');
-end;
-
-procedure TInternalPerformanceCounterListForDebugOneClass.AddSubList(
-  const ASubList: IInternalPerformanceCounterList);
-begin
-  Assert(False);
-end;
-
-function TInternalPerformanceCounterListForDebugOneClass.CreateAndAddNewCounter(
-  const AName: string): IInternalPerformanceCounter;
-begin
-  Assert(False);
-  Result := nil;
-end;
-
-function TInternalPerformanceCounterListForDebugOneClass.CreateAndAddNewSubList(
-  const AName: string): IInternalPerformanceCounterList;
-begin
-  Assert(False);
-  Result := nil;
+  FCounterCreate := AFactory.Build(ABaseName + '/Create');
+  FCounterDestroy := AFactory.Build(ABaseName + '/Destroy');
 end;
 
 function TInternalPerformanceCounterListForDebugOneClass.GetCounterCreate: IInternalPerformanceCounter;
@@ -80,29 +63,6 @@ end;
 function TInternalPerformanceCounterListForDebugOneClass.GetCounterDestroy: IInternalPerformanceCounter;
 begin
   Result := FCounterDestroy;
-end;
-
-function TInternalPerformanceCounterListForDebugOneClass.GetEunm: IEnumUnknown;
-begin
-  Result := TEnumUnknownTwoItems.Create(FCounterCreate, FCounterDestroy);
-end;
-
-function TInternalPerformanceCounterListForDebugOneClass.GetName: string;
-begin
-  Result := FClass.ClassName;
-end;
-
-procedure TInternalPerformanceCounterListForDebugOneClass.AppendStaticDataToList(
-  const ADataList: IIDInterfaceList);
-begin
-  ADataList.Add(FCounterCreate.Id, FCounterCreate.GetStaticData);
-  ADataList.Add(FCounterDestroy.Id, FCounterDestroy.GetStaticData);
-end;
-
-function TInternalPerformanceCounterListForDebugOneClass.GetStaticDataList: IIDInterfaceList;
-begin
-  Result := TIDInterfaceList.Create;
-  AppendStaticDataToList(Result);
 end;
 
 end.

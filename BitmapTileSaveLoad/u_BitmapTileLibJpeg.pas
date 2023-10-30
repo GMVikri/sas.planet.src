@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BitmapTileLibJpeg;
@@ -26,11 +26,11 @@ uses
   Types,
   Classes,
   SysUtils,
-  GR32,
+  t_Bitmap32,
   i_InternalPerformanceCounter,
   i_BinaryData,
   i_Bitmap32Static,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_BitmapTileSaveLoad,
   u_BaseInterfacedObject;
 
@@ -38,7 +38,7 @@ type
   TLibJpegTileLoader = class(TBaseInterfacedObject, IBitmapTileLoader)
   private
     FLoadStreamCounter: IInternalPerformanceCounter;
-    FBitmapFactory: IBitmap32StaticFactory;
+    FBitmapFactory: IBitmap32BufferFactory;
 
     function ReadLine(
       Sender: TObject;
@@ -52,7 +52,7 @@ type
   public
     constructor Create(
       const APerfCounterList: IInternalPerformanceCounterList;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
   end;
 
@@ -73,14 +73,13 @@ type
       ACompressionQuality: Byte;
       const APerfCounterList: IInternalPerformanceCounterList
     );
-    destructor Destroy; override;
   end;
 
 implementation
 
 uses
   LibJpegRead,
-  LibJpegWrite,   
+  LibJpegWrite,
   u_StreamReadOnlyByBinaryData,
   u_BinaryDataByMemStream;
 
@@ -105,7 +104,7 @@ const
 
 constructor TLibJpegTileLoader.Create(
   const APerfCounterList: IInternalPerformanceCounterList;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create;
@@ -200,11 +199,6 @@ begin
   FCompressionQuality := ACompressionQuality;
 end;
 
-destructor TLibJpegTileSaver.Destroy;
-begin
-  inherited Destroy;
-end;
-
 function TLibJpegTileSaver.Save(const ABitmap: IBitmap32Static): IBinaryData;
 var
   VCounterContext: TInternalPerformanceCounterContext;
@@ -220,7 +214,6 @@ begin
       VAppData.Size := ABitmap.Size;
       VAppData.Data := ABitmap.Data;
       VAppData.BGRAColorSpace := cUseBGRAColorSpace;
-
       VJpeg := TJpegWriter.Create(VMemStream, VAppData.BGRAColorSpace, cUseLibJpeg8);
       try
         if VAppData.BGRAColorSpace then begin
@@ -228,7 +221,6 @@ begin
         end else begin
           VAppData.LineSize := VAppData.Size.X * 3;
         end;
-
         GetMem(VAppData.Line, VAppData.LineSize);
         try
           VJpeg.Width := VAppData.Size.X;

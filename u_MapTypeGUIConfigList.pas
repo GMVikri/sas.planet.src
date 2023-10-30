@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MapTypeGUIConfigList;
@@ -29,9 +29,9 @@ uses
   i_GUIDListStatic,
   i_MapTypeHotKeyListStatic,
   i_MapTypeGUIConfigList,
+  i_MapTypeSet,
   i_LanguageManager,
-  u_ConfigDataElementComplexBase,
-  i_MapTypes;
+  u_ConfigDataElementComplexBase;
 
 type
   TMapTypeGUIConfigList = class(TConfigDataElementComplexBase, IMapTypeGUIConfigList)
@@ -62,7 +62,11 @@ type
 implementation
 
 uses
+  i_InterfaceListSimple,
+  i_MapTypes,
   u_ListenerByEvent,
+  u_InterfaceListSimple,
+  u_SortFunc,
   u_GUIDListStatic,
   u_MapTypeHotKeyListStatic;
 
@@ -86,7 +90,7 @@ begin
   VEnum := FMapsSet.GetIterator;
   while VEnum.Next(1, VGUID, VGetCount) = S_OK do begin
     VMap := FMapsSet.GetMapTypeByGUID(VGUID);
-    Add(VMap.MapType.GUIConfig, nil);
+    Add(VMap.GUIConfig, nil);
   end;
   FBeforeLangChangeListener := TNotifyNoMmgEventListener.Create(Self.OnBeforeLangChange);
   FLanguageManager.BeforeChangeNotifier.Add(FBeforeLangChangeListener);
@@ -99,10 +103,14 @@ end;
 
 destructor TMapTypeGUIConfigList.Destroy;
 begin
-  FLanguageManager.BeforeChangeNotifier.Remove(FBeforeLangChangeListener);
-  FLanguageManager.AfterChangeNotifier.Remove(FAfterLangChangeListener);
-  FBeforeLangChangeListener := nil;
-  FAfterLangChangeListener := nil;
+  if Assigned(FLanguageManager) and Assigned(FBeforeLangChangeListener) then begin
+    FLanguageManager.BeforeChangeNotifier.Remove(FBeforeLangChangeListener);
+    FBeforeLangChangeListener := nil;
+  end;
+  if Assigned(FLanguageManager) and Assigned(FAfterLangChangeListener) then begin
+    FLanguageManager.AfterChangeNotifier.Remove(FAfterLangChangeListener);
+    FAfterLangChangeListener := nil;
+  end;
   FLanguageManager := nil;
 
   inherited;
@@ -114,76 +122,43 @@ begin
 end;
 
 function TMapTypeGUIConfigList.CreateOrderedList: IGUIDListStatic;
-  procedure QuickSort(
-  var AIndexList: array of Integer;
-  var AGUIDList: array of TGUID;
-    L, R: Integer
-  );
-  var
-    I, J: Integer;
-    P: Integer;
-    TI: Integer;
-    TG: TGUID;
-  begin
-    repeat
-      I := L;
-      J := R;
-      P := AIndexList[(L + R) shr 1];
-      repeat
-        while AIndexList[I] < P do begin
-          Inc(I);
-        end;
-        while AIndexList[J] > P do begin
-          Dec(J);
-        end;
-        if I <= J then begin
-          TI := AIndexList[I];
-          TG := AGUIDList[I];
-
-          AIndexList[I] := AIndexList[J];
-          AGUIDList[I] := AGUIDList[J];
-          AIndexList[J] := TI;
-          AGUIDList[J] := TG;
-          Inc(I);
-          Dec(J);
-        end;
-      until I > J;
-      if L < J then begin
-        QuickSort(AIndexList, AGUIDList, L, J);
-      end;
-      L := I;
-    until I >= R;
-  end;
-
 var
   VIndexList: array of Integer;
   VGUIDList: array of TGUID;
-  VGUID: TGUID;
-  VEnum: IEnumGUID;
-  VGetCount: Cardinal;
+  VEnum: IEnumUnknown;
+  VGetCount: Integer;
   VMap: IMapType;
-  VMapsCount: Integer;
+  VCount: Integer;
   i: Integer;
+  VList: IInterfaceListSimple;
 begin
-  VEnum := FMapsSet.GetIterator;
-  VMapsCount := 0;
-  while VEnum.Next(1, VGUID, VGetCount) = S_OK do begin
-    Inc(VMapsCount);
+  Result := nil;
+  if Assigned(FMapsSet)then begin
+    VCount := FMapsSet.GetCount;
+    VList := TInterfaceListSimple.Create;
+    VList.Capacity := VCount;
+    VEnum := FMapsSet.GetMapTypeIterator;
+    while VEnum.Next(1, VMap, @VGetCount) = S_OK do begin
+      if Assigned(VMap) then begin
+        VList.Add(VMap);
+      end;
+    end;
+    VCount := VList.GetCount;
+    if VCount > 1 then begin
+      SetLength(VIndexList, VCount);
+      for i := 0 to VCount - 1 do begin
+        VIndexList[i] := IMapType(VList[i]).GUIConfig.SortIndex;
+      end;
+      SortInterfaceListByIntegerMeasure(VList, VIndexList);
+    end;
+    if VCount > 0 then begin
+      SetLength(VGUIDList, VCount);
+      for i := 0 to VCount - 1 do begin
+        VGUIDList[i] := IMapType(VList[i]).Zmp.GUID;
+      end;
+      Result := TGUIDListStatic.Create(VGUIDList, VCount);
+    end;
   end;
-
-  SetLength(VIndexList, VMapsCount);
-  SetLength(VGUIDList, VMapsCount);
-
-  VEnum.Reset;
-  i := 0;
-  while VEnum.Next(1, VGUID, VGetCount) = S_OK do begin
-    VMap := FMapsSet.GetMapTypeByGUID(VGUID);
-    VIndexList[i] := VMap.MapType.GUIConfig.SortIndex;
-    VGUIDList[i] := VMap.GUID;
-    Inc(i);
-  end;
-  QuickSort(VIndexList, VGUIDList, 0, VMapsCount - 1);
-  Result := TGUIDListStatic.Create(VGUIDList, VMapsCount);
 end;
 
 procedure TMapTypeGUIConfigList.DoBeforeChangeNotify;

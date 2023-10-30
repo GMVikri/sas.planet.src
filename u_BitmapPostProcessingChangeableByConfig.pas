@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BitmapPostProcessingChangeableByConfig;
@@ -25,14 +25,14 @@ interface
 uses
   i_BitmapPostProcessing,
   i_BitmapPostProcessingConfig,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_Listener,
   u_ConfigDataElementBase;
 
 type
   TBitmapPostProcessingChangeableByConfig = class(TConfigDataElementWithStaticBaseEmptySaveLoad, IBitmapPostProcessingChangeable)
   private
-    FBitmapFactory: IBitmap32StaticFactory;
+    FBitmapFactory: IBitmap32BufferFactory;
     FConfig: IBitmapPostProcessingConfig;
     FConfigChangeListener: IListener;
     procedure  OnConfigChange;
@@ -43,7 +43,7 @@ type
   public
     constructor Create(
       const AConfig: IBitmapPostProcessingConfig;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
     destructor Destroy; override;
   end;
@@ -135,7 +135,7 @@ end;
 
 constructor TBitmapPostProcessingChangeableByConfig.Create(
   const AConfig: IBitmapPostProcessingConfig;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   Assert(AConfig <> nil);
@@ -174,7 +174,7 @@ end;
 
 destructor TBitmapPostProcessingChangeableByConfig.Destroy;
 begin
-  if FConfig <> nil then begin
+  if Assigned(FConfig) and Assigned(FConfigChangeListener) then begin
     FConfig.ChangeNotifier.Remove(FConfigChangeListener);
     FConfigChangeListener := nil;
   end;

@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ArchiveReadWriteKaZip;
@@ -88,8 +88,8 @@ end;
 
 destructor TArchiveReadByKaZip.Destroy;
 begin
-  FZip.Free;
-  inherited Destroy;
+  FreeAndNil(FZip);
+  inherited;
 end;
 
 function TArchiveReadByKaZip.GetItemsCount: Integer;
@@ -154,7 +154,7 @@ begin
     FZip.CreateZip(AFileName);
     FZip.CompressionType := ctFast;
   end;
-  
+
   FZip.Active := True;
 end;
 
@@ -170,12 +170,12 @@ end;
 
 destructor TArchiveWriteByKaZip.Destroy;
 begin
-  if FIsFromFileName then begin
+  if FIsFromFileName and Assigned(FZip) then begin
     FZip.Active := False;
     FZip.Close;
   end;
-  FZip.Free;
-  inherited Destroy;
+  FreeAndNil(FZip);
+  inherited;
 end;
 
 function TArchiveWriteByKaZip.AddFile(

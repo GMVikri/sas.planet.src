@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2013, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BerkeleyDBValue;
@@ -137,7 +137,7 @@ type
     type
       TVersionedMetaValueElement = record
         VersionID: Word;
-        TilePriority: Word;
+        TileZOrder: Word;
         TileSize: Integer;
         TileDate: TDateTime;
         TileCRC: Cardinal;
@@ -151,7 +151,7 @@ type
   private
     { IBerkeleyDBVersionedMetaValueElement }
     function GetVersionID: Word;
-    function GetTilePriority: Word;
+    function GetTileZOrder: Word;
     function GetTileSize: Integer;
     function GetTileDate: TDateTime;
     function GetTileCRC: Cardinal;
@@ -166,7 +166,7 @@ type
   public
     constructor Create(
       const AVersionID: Word;
-      const ATilePriority: Word;
+      const ATileZOrder: Word;
       const ATileSize: Integer;
       const ATileDate: TDateTime;
       const ATileCRC: Cardinal;
@@ -224,7 +224,6 @@ type
 implementation
 
 uses
-  Classes,
   CRC32,
   u_BerkeleyDBValueZlib;
 
@@ -255,7 +254,7 @@ begin
   if FOwnMem and Assigned(FData) then begin
     FreeMemory(FData);
   end;
-  inherited Destroy;
+  inherited;
 end;
 
 function TBerkeleyDBValueBase.GetData: Pointer;
@@ -283,7 +282,7 @@ begin
   if Assigned(FMetaValue) then begin
     Dispose(FMetaValue);
   end;
-  inherited Destroy;
+  inherited;
 end;
 
 procedure TBerkeleyDBMetaValue.DataToMetaValue(const AStorageEPSG: Integer);
@@ -348,7 +347,7 @@ begin
     FMetaValue.MetaCRC32 := CRC32Buf(Pointer(FMetaValue), ASize);
     if PCardinal(VCRC32Ptr)^ <> FMetaValue.MetaCRC32 then begin
       raise EBerkeleyDBBadValue.Create(
-        'Error [BerkeleyDB MetaValue]: Bad CRC32 value: 0x' + IntToHex(FMetaValue.MetaCRC32, 8)
+        'Read meta-value error - bad checksumm: 0x' + IntToHex(FMetaValue.MetaCRC32, 8)
       );
     end;
     Result := True;
@@ -414,7 +413,7 @@ begin
     Dispose(FValue);
   end;
   FBinData := nil;
-  inherited Destroy;
+  inherited;
 end;
 
 procedure TBerkeleyDBValue.TileToValue(
@@ -448,7 +447,7 @@ begin
   end;
 
   if Assigned(ATileContentType) then begin
-    FValue.TileContentType := ATileContentType.GetContentType;
+    FValue.TileContentType := WideString(ATileContentType.GetContentType);
   end else begin
     FValue.TileContentType := '';
   end;
@@ -579,17 +578,12 @@ begin
       Result := True;
     end else begin
       raise EBerkeleyDBBadValue.Create(
-        'Error [BerkeleyDB Value]: Bad CRC32 value: 0x' + IntToHex(FValue.RecCRC32, 8)
+        'Read value error - bad checksumm: 0x' + IntToHex(FValue.RecCRC32, 8)
       );
     end;
   end else begin
     raise EBerkeleyDBBadValue.Create(
-      AnsiString('Error [BerkeleyDB Value]: Bad magic value (') +
-      FValue.RecMagic[0] +
-      FValue.RecMagic[1] +
-      FValue.RecMagic[2] +
-      FValue.RecMagic[3] +
-      ')'
+      'Read value error - bad magic: 0x' + IntToHex(PCardinal(@FValue.RecMagic[0])^, 8)
     );
   end;
 end;
@@ -643,7 +637,7 @@ end;
 
 constructor TBerkeleyDBVersionedMetaValueElement.Create(
   const AVersionID: Word;
-  const ATilePriority: Word;
+  const ATileZOrder: Word;
   const ATileSize: Integer;
   const ATileDate: TDateTime;
   const ATileCRC: Cardinal;
@@ -654,12 +648,23 @@ begin
   inherited Create;
   New(FValue);
   FValue.VersionID := AVersionID;
-  FValue.TilePriority := ATilePriority;
+  FValue.TileZOrder := ATileZOrder;
   FValue.TileSize := ATileSize;
   FValue.TileDate := ATileDate;
   FValue.TileCRC := ATileCRC;
-  FValue.TileVersionInfo := ATileVersionInfo.StoreString;
-  FValue.TileContentType := ATileContentType.GetContentType;
+
+  if Assigned(ATileVersionInfo) then begin
+    FValue.TileVersionInfo := ATileVersionInfo.StoreString;
+  end else begin
+    FValue.TileVersionInfo := '';
+  end;
+
+  if Assigned(ATileContentType) then begin
+    FValue.TileContentType := WideString(ATileContentType.GetContentType);
+  end else begin
+    FValue.TileContentType := '';
+  end;
+
   ValueToData;
 end;
 
@@ -676,7 +681,7 @@ end;
 destructor TBerkeleyDBVersionedMetaValueElement.Destroy;
 begin
   Dispose(FValue);
-  inherited Destroy;
+  inherited;
 end;
 
 function TBerkeleyDBVersionedMetaValueElement.Assign(
@@ -700,8 +705,8 @@ begin
   FValue.VersionID := PWord(VPtr)^;
   Inc(VPtr, SizeOf(FValue.VersionID));
 
-  FValue.TilePriority := PWord(VPtr)^;
-  Inc(VPtr, SizeOf(FValue.TilePriority));
+  FValue.TileZOrder := PWord(VPtr)^;
+  Inc(VPtr, SizeOf(FValue.TileZOrder));
 
   FValue.TileSize := PInteger(VPtr)^;
   Inc(VPtr, SizeOf(FValue.TileSize));
@@ -737,7 +742,7 @@ begin
 
   FSize :=
     SizeOf(FValue.VersionID) +
-    SizeOf(FValue.TilePriority) +
+    SizeOf(FValue.TileZOrder) +
     SizeOf(FValue.TileSize) +
     SizeOf(FValue.TileDate) +
     SizeOf(FValue.TileCRC) +
@@ -753,9 +758,9 @@ begin
   PWord(VPtr)^ := FValue.VersionID;
   Inc(VPtr, VLen);
 
-   // tile priority
-  VLen := SizeOf(FValue.TilePriority);
-  PWord(VPtr)^ := FValue.TilePriority;
+   // tile Z-order
+  VLen := SizeOf(FValue.TileZOrder);
+  PWord(VPtr)^ := FValue.TileZOrder;
   Inc(VPtr, VLen);
 
    // tile size
@@ -782,7 +787,7 @@ begin
   VLen := Length(cWideCharEndLine) * SizeOf(WideChar);
   Move(cWideCharEndLine, VPtr^, VLen);
   Inc(VPtr, VLen);
-  
+
   // tile content-type
   VLen := Length(FValue.TileContentType) * SizeOf(WideChar);
   if VLen > 0 then begin
@@ -802,10 +807,10 @@ begin
   end;
 end;
 
-function TBerkeleyDBVersionedMetaValueElement.GetTilePriority: Word;
+function TBerkeleyDBVersionedMetaValueElement.GetTileZOrder: Word;
 begin
   if Assigned(FValue) then begin
-    Result := FValue.TilePriority;
+    Result := FValue.TileZOrder;
   end else begin
     Result := 0;
   end;
@@ -883,6 +888,7 @@ constructor TBerkeleyDBVersionedMetaValue.Create(
   const AData: IBinaryData
 );
 begin
+  Assert(AData <> nil);
   inherited Create;
   Assign(AData.Buffer, AData.Size, False);
   FBinData := AData;
@@ -891,7 +897,7 @@ end;
 destructor TBerkeleyDBVersionedMetaValue.Destroy;
 begin
   Clear;
-  inherited Destroy;
+  inherited;
 end;
 
 function TBerkeleyDBVersionedMetaValue.Assign(
@@ -951,18 +957,12 @@ begin
       Result := True;
     end else begin
       raise EBerkeleyDBBadValue.Create(
-        'Error [BerkeleyDB Versioned Meta Value]: Bad CRC32 value: 0x' +
-        IntToHex(FValue.RecCRC32, 8)
+        'Read versioned meta-value error - bad checksumm: 0x' + IntToHex(FValue.RecCRC32, 8)
       );
     end;
   end else begin
     raise EBerkeleyDBBadValue.Create(
-      AnsiString('Error [BerkeleyDB Versioned Meta Value]: Bad magic value (') +
-      FValue.RecMagic[0] +
-      FValue.RecMagic[1] +
-      FValue.RecMagic[2] +
-      FValue.RecMagic[3] +
-      ')'
+      'Read versioned meta-value error - bad magic: 0x' + IntToHex(PCardinal(@FValue.RecMagic[0])^, 8)
     );
   end;
 end;

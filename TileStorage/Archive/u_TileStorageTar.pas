@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2013, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageTar;
@@ -88,8 +88,8 @@ end;
 
 destructor TEnumTileInfoByTar.Destroy;
 begin
-  FTarReader.Free;
-  inherited Destroy;
+  FreeAndNil(FTarReader);
+  inherited;
 end;
 
 function TEnumTileInfoByTar.Next(var ATileInfo: TTileInfo): Boolean;
@@ -104,7 +104,7 @@ begin
   Result := False;
   while FTarReader.FindNext(VTarRec) do begin
     if VTarRec.FileType = ftNormal then begin // regular file
-      VTileName := StringReplace(VTarRec.Name, '/', PathDelim, [rfReplaceAll]);
+      VTileName := StringReplace(string(VTarRec.Name), '/', PathDelim, [rfReplaceAll]);
       if FTileFileNameParser.GetTilePoint(VTileName, VTileXY, VZoom) then begin
         ATileInfo.FTile := VTileXY;
         ATileInfo.FZoom := VZoom;

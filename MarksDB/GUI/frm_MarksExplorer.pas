@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_MarksExplorer;
@@ -34,7 +34,6 @@ uses
   Forms,
   Dialogs,
   StdCtrls,
-  CheckLst,
   ExtCtrls,
   ImgList,
   TB2Dock,
@@ -46,14 +45,17 @@ uses
   i_RegionProcess,
   u_CommonFormAndFrameParents,
   i_LanguageManager,
+  i_InterfaceListStatic,
+  i_GeometryLonLatFactory,
   i_LocalCoordConverterChangeable,
   i_NavigationToPoint,
   i_UsedMarksConfig,
   i_MapViewGoto,
   i_WindowPositionConfig,
-  i_MarksSimple,
+  i_MarkId,
+  i_VectorDataItemSimple,
   i_MarkCategory,
-  u_MarksDbGUIHelper;
+  u_MarkDbGUIHelper;
 
 type
   TfrmMarksExplorer = class(TFormWitghLanguageManager)
@@ -157,9 +159,10 @@ type
   private
     FUseAsIndepentWindow: Boolean;
     FMapGoto: IMapViewGoto;
-    FCategoryList: IInterfaceList;
-    FMarksList: IInterfaceList;
-    FMarkDBGUI: TMarksDbGUIHelper;
+    FCategoryList: IInterfaceListStatic;
+    FMarksList: IInterfaceListStatic;
+    FMarkDBGUI: TMarkDbGUIHelper;
+    FGeometryLonLatFactory: IGeometryLonLatFactory;
     FMarksShowConfig: IUsedMarksConfig;
     FWindowConfig: IWindowPositionConfig;
     FViewPortState: ILocalCoordConverterChangeable;
@@ -184,8 +187,9 @@ type
     function GetSelectedCategory: IMarkCategory;
     procedure UpdateMarksList;
     function GetSelectedMarkId: IMarkId;
-    function GetSelectedMarkFull: IMark;
-    function GetSelectedMarksIdList: IInterfaceList;
+    function GetSelectedMarkFull: IVectorDataItem;
+    function GetSelectedMarksIdList: IInterfaceListStatic;
+    procedure WMGetMinMaxInfo(var Msg: TWMGetMinMaxInfo); message WM_GETMINMAXINFO;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
   public
@@ -194,11 +198,12 @@ type
     constructor Create(
       AUseAsIndepentWindow: Boolean;
       const ALanguageManager: ILanguageManager;
+      const AGeometryLonLatFactory: IGeometryLonLatFactory;
       const AViewPortState: ILocalCoordConverterChangeable;
       const ANavToPoint: INavigationToPoint;
       const AWindowConfig: IWindowPositionConfig;
       const AMarksShowConfig: IUsedMarksConfig;
-      AMarkDBGUI: TMarksDbGUIHelper;
+      AMarkDBGUI: TMarkDbGUIHelper;
       const AMapGoto: IMapViewGoto;
       const ARegionProcess: IRegionProcess
     ); reintroduce;
@@ -208,17 +213,18 @@ type
 implementation
 
 uses
+  ExplorerSort,
   gnugettext,
   t_CommonTypes,
   t_GeoTypes,
+  i_InterfaceListSimple,
   i_StaticTreeItem,
   i_Category,
   i_ImportConfig,
   i_MarkTemplate,
-  i_MarkPicture,
-  i_MarksFactoryConfig,
-  i_VectorItemLonLat,
-  i_VectorDataItemSimple,
+  i_MarkFactoryConfig,
+  i_GeometryLonLat,
+  u_InterfaceListSimple,
   u_ListenerByEvent;
 
 {$R *.dfm}
@@ -226,11 +232,12 @@ uses
 constructor TfrmMarksExplorer.Create(
   AUseAsIndepentWindow: Boolean;
   const ALanguageManager: ILanguageManager;
+  const AGeometryLonLatFactory: IGeometryLonLatFactory;
   const AViewPortState: ILocalCoordConverterChangeable;
   const ANavToPoint: INavigationToPoint;
   const AWindowConfig: IWindowPositionConfig;
   const AMarksShowConfig: IUsedMarksConfig;
-  AMarkDBGUI: TMarksDbGUIHelper;
+  AMarkDBGUI: TMarkDbGUIHelper;
   const AMapGoto: IMapViewGoto;
   const ARegionProcess: IRegionProcess
 );
@@ -238,6 +245,7 @@ begin
   inherited Create(ALanguageManager);
   FUseAsIndepentWindow := AUseAsIndepentWindow;
   FMarkDBGUI := AMarkDBGUI;
+  FGeometryLonLatFactory := AGeometryLonLatFactory;
   FMapGoto := AMapGoto;
   FWindowConfig := AWindowConfig;
   FMarksShowConfig := AMarksShowConfig;
@@ -272,11 +280,9 @@ end;
 
 destructor TfrmMarksExplorer.Destroy;
 begin
-  if FWindowConfig <> nil then begin
-    if FConfigListener <> nil then begin
-      FWindowConfig.ChangeNotifier.Remove(FConfigListener);
-      FConfigListener := nil;
-    end;
+  if Assigned(FWindowConfig) and Assigned(FConfigListener) then begin
+    FWindowConfig.ChangeNotifier.Remove(FConfigListener);
+    FConfigListener := nil;
   end;
   inherited;
 end;
@@ -312,33 +318,35 @@ procedure TfrmMarksExplorer.UpdateCategoryTree;
     end else begin
       VNode := AParentNode.getFirstChild;
     end;
-    for i := 0 to ATree.SubItemCount - 1 do begin
-      VTree := ATree.SubItem[i];
-      VName := VTree.Name;
-      if VName = '' then begin
-        VName := '(NoName)';
-      end;
-      if VNode = nil then begin
-        VNode := ATreeItems.AddChildObject(AParentNode, VName, nil);
-      end else begin
-        VNode.Text := VName;
-      end;
-      if Supports(VTree.Data, IMarkCategory, VCategory) then begin
-        VNode.Data := Pointer(VCategory);
-        if VCategory.Visible then begin
-          VNode.StateIndex := 1;
+    if Assigned(ATree) then begin
+      for i := 0 to ATree.SubItemCount - 1 do begin
+        VTree := ATree.SubItem[i];
+        VName := VTree.Name;
+        if VName = '' then begin
+          VName := '(NoName)';
+        end;
+        if VNode = nil then begin
+          VNode := ATreeItems.AddChildObject(AParentNode, VName, nil);
         end else begin
-          VNode.StateIndex := 2;
+          VNode.Text := VName;
         end;
-        if VCategory.IsSame(ASelectedCategory) then begin
-          VNode.Selected := True;
+        if Supports(VTree.Data, IMarkCategory, VCategory) then begin
+          VNode.Data := Pointer(VCategory);
+          if VCategory.Visible then begin
+            VNode.StateIndex := 1;
+          end else begin
+            VNode.StateIndex := 2;
+          end;
+          if VCategory.IsSame(ASelectedCategory) then begin
+            VNode.Selected := True;
+          end;
+        end else begin
+          VNode.StateIndex:=0;
+          VNode.Data := nil;
         end;
-      end else begin
-        VNode.StateIndex:=0;
-        VNode.Data := nil;
+        UpdateTreeSubItems(VTree, ASelectedCategory, VNode, ATreeItems);
+        VNode := VNode.getNextSibling;
       end;
-      UpdateTreeSubItems(VTree, ASelectedCategory, VNode, ATreeItems);
-      VNode := VNode.getNextSibling;
     end;
     while VNode <> nil do begin
       VNodeToDelete := VNode;
@@ -349,15 +357,24 @@ procedure TfrmMarksExplorer.UpdateCategoryTree;
 var
   VTree: IStaticTreeItem;
   VSelectedCategory: ICategory;
+  VNode: TTreeNode;
 begin
   VSelectedCategory := GetSelectedCategory;
   FCategoryList := FMarkDBGUI.MarksDb.CategoryDB.GetCategoriesList;
-  VTree := FMarkDBGUI.MarksDb.CategoryListToStaticTree(FCategoryList);
+  VTree := FMarkDBGUI.MarksDb.CategoryDB.CategoryListToStaticTree(FCategoryList);
   CategoryTreeView.OnChange:=nil;
   try
     CategoryTreeView.Items.BeginUpdate;
     try
       UpdateTreeSubItems(VTree, VSelectedCategory, nil, CategoryTreeView.Items);
+      CategoryTreeView.CustomSort(TreeViewCompare, 0);
+      VSelectedCategory := GetSelectedCategory;
+      if not Assigned(VSelectedCategory) then begin
+        VNode := CategoryTreeView.Items.GetFirstNode;
+        if Assigned(VNode) then begin
+          VNode.Selected := True;
+        end;
+      end;
     finally
       CategoryTreeView.Items.EndUpdate;
     end;
@@ -380,17 +397,19 @@ begin
   FMarksList := nil;
   VCategory := GetSelectedCategory;
   if (VCategory <> nil) then begin
-    FMarksList := FMarkDBGUI.MarksDb.MarksDb.GetMarksIdListByCategory(VCategory);
+    FMarksList := FMarkDBGUI.MarksDb.MarkDb.GetMarkIdListByCategory(VCategory);
     VSortedMarksList := TStringList.Create;
     try
-      VSortedMarksList.Sorted := True;
       VSortedMarksList.Duplicates := dupAccept;
       VSortedMarksList.BeginUpdate;
       try
-        for I := 0 to FMarksList.Count - 1 do begin
-          VMarkId := IMarkId(FMarksList.Items[I]);
-          VName := FMarkDBGUI.GetMarkIdCaption(VMarkId);
-          VSortedMarksList.AddObject(VName, Pointer(VMarkId));
+        if Assigned(FMarksList) then begin
+          for I := 0 to FMarksList.Count - 1 do begin
+            VMarkId := IMarkId(FMarksList.Items[I]);
+            VName := FMarkDBGUI.GetMarkIdCaption(VMarkId);
+            VSortedMarksList.AddObject(VName, Pointer(VMarkId));
+          end;
+          VSortedMarksList.CustomSort(StringListCompare);
         end;
       finally
         VSortedMarksList.EndUpdate;
@@ -407,7 +426,7 @@ begin
             VNode.Text := VName;
           end;
           VNode.Data := Pointer(VMarkId);
-          if FMarkDBGUI.MarksDb.MarksDb.GetMarkVisibleByID(VMarkId) then begin
+          if FMarkDBGUI.MarksDb.MarkDb.GetMarkVisibleByID(VMarkId) then begin
             VNode.StateIndex := 1;
           end else begin
             VNode.StateIndex := 2;
@@ -445,27 +464,29 @@ begin
   Result := GetNodeCategory(CategoryTreeView.Selected);
 end;
 
-function TfrmMarksExplorer.GetSelectedMarkFull: IMark;
+function TfrmMarksExplorer.GetSelectedMarkFull: IVectorDataItem;
 var
   VMarkId: IMarkId;
 begin
   Result := nil;
   VMarkId := GetSelectedMarkId;
   if VMarkId <> nil then begin
-    Result := FMarkDBGUI.MarksDb.MarksDb.GetMarkByID(VMarkId);
+    Result := FMarkDBGUI.MarksDb.MarkDb.GetMarkByID(VMarkId);
   end;
 end;
 
-function TfrmMarksExplorer.GetSelectedMarksIdList: IInterfaceList;
+function TfrmMarksExplorer.GetSelectedMarksIdList: IInterfaceListStatic;
 var
-  i:integer;
+  i: integer;
+  VTemp: IInterfaceListSimple;
 begin
-  Result := TInterfaceList.Create;
+  Result := nil;
+  VTemp := TInterfaceListSimple.Create;
   for i:=0 to MarksListBox.SelectionCount-1 do begin
-    Result.Add(IMarkId(MarksListBox.Selections[i].Data))
+    VTemp.Add(IMarkId(MarksListBox.Selections[i].Data))
   end;
-  if Result.Count=0 then begin
-    Result:=nil;
+  if VTemp.Count > 0 then begin
+    Result := VTemp.MakeStaticAndClear;
   end;
 end;
 
@@ -482,37 +503,14 @@ end;
 
 procedure TfrmMarksExplorer.btnImportClick(Sender: TObject);
 var
-  VImportConfig: IImportConfig;
-  i: Integer;
-  VList: IInterfaceList;
-  VMarkPoint: IMarkPoint;
-  VMarkLine: IMarkLine;
-  VMarkPoly: IMarkPoly;
-  VMark: IMark;
+  VList: IInterfaceListStatic;
+  VMark: IVectorDataItem;
 begin
-  VImportConfig := nil;
-  if (OpenDialog1.Execute(Self.Handle)) then begin
-    if Assigned(OpenDialog1.Files) and (OpenDialog1.Files.Count>0) then begin
-      // multiple files
-      for i := 0 to OpenDialog1.Files.Count-1 do
-        VList := FMarkDBGUI.ImportFile(OpenDialog1.Files[i], VImportConfig);
-    end else begin
-      // single file
-      VList := FMarkDBGUI.ImportFile(OpenDialog1.FileName, VImportConfig);
-    end;
-  end;
+  VList := FMarkDBGUI.ImportModal(Self.Handle);
   if (Vlist <> nil) and (VList.Count > 0) then begin
-    VMark:=FMarkDBGUI.MarksDb.MarksDb.GetMarkByID(IMarkId(VList[VList.Count-1]));
+    VMark := IVectorDataItem(VList[VList.Count - 1]);
     if VMark <> nil then begin
-      if Supports(VMark, IMarkPoint, VMarkPoint) then begin
-        FMapGoto.GotoPos(VMarkPoint.GetGoToLonLat, FViewPortState.GetStatic.Zoom, False);
-      end;
-      if Supports(VMark, IMarkPoly, VMarkPoly) then begin
-        FMapGoto.FitRectToScreen(VMarkPoly.GetLine.Bounds.Rect);
-      end;
-      if Supports(VMark, IMarkLine, VMarkLine) then begin
-        FMapGoto.FitRectToScreen(VMarkLine.Line.Bounds.Rect);
-      end;
+      FMapGoto.FitRectToScreen(VMark.Geometry.Bounds.Rect);
     end;
   end;
 end;
@@ -529,12 +527,12 @@ end;
 
 procedure TfrmMarksExplorer.btnExportClick(Sender: TObject);
 var
-  VCategoryList: IInterfaceList;
+  VCategoryList: IInterfaceListStatic;
   VOnlyVisible: Boolean;
 begin
   VOnlyVisible := (TComponent(Sender).tag = 1);
   if VOnlyVisible then begin
-    VCategoryList := FMarkDBGUI.MarksDb.GetVisibleCategoriesIgnoreZoom;
+    VCategoryList := FMarkDBGUI.MarksDb.CategoryDB.GetVisibleCategoriesIgnoreZoom;
   end else begin
     VCategoryList := FMarkDBGUI.MarksDb.CategoryDB.GetCategoriesList;
   end;
@@ -543,7 +541,7 @@ end;
 
 procedure TfrmMarksExplorer.btnDelMarkClick(Sender: TObject);
 var
-  VMarkIdList: IInterfaceList;
+  VMarkIdList: IInterfaceListStatic;
 begin
   VMarkIdList:=GetSelectedMarksIdList;
   if VMarkIdList <> nil then begin
@@ -555,73 +553,54 @@ end;
 
 procedure TfrmMarksExplorer.btnEditMarkClick(Sender: TObject);
 var
-  VMarkIdList: IInterfaceList;
-  VMarksList: IInterfaceList;
-  VMark: IMark;
-  VMarkNew: IMark;
+  VMarkIdList: IInterfaceListStatic;
+  VMarksList: IInterfaceListSimple;
+  VMark: IVectorDataItem;
+  VMarkNew: IVectorDataItem;
   VImportConfig: IImportConfig;
-  VMarkPoint: IVectorDataItemPoint;
-  VMarkLine: IVectorDataItemLine;
-  VMarkPoly: IVectorDataItemPoly;
+  VParams: IImportMarkParams;
   VCategory: ICategory;
-  VPicName: string;
-  VPic: IMarkPicture;
   VMarkId: IMarkId;
   i:integer;
   VVisible: Boolean;
-  VResult: IMark;
-  VResultList: IInterfaceList;
+  VResult: IVectorDataItem;
+  VResultList: IInterfaceListStatic;
 begin
   VMarkIdList:=GetSelectedMarksIdList;
   if VMarkIdList <> nil then begin
     if VMarkIdList.Count=1 then begin
-      VMark:=FMarkDBGUI.MarksDb.MarksDb.GetMarkByID(IMarkId(VMarkIdList[0]));
-      VVisible := FMarkDBGUI.MarksDb.MarksDb.GetMarkVisible(VMark);
+      VMark:=FMarkDBGUI.MarksDb.MarkDb.GetMarkByID(IMarkId(VMarkIdList[0]));
+      VVisible := FMarkDBGUI.MarksDb.MarkDb.GetMarkVisible(VMark);
       VMarkNew := FMarkDBGUI.EditMarkModal(VMark, False, VVisible);
       if VMarkNew <> nil then begin
-        VResult := FMarkDBGUI.MarksDb.MarksDb.UpdateMark(VMark, VMarkNew);
+        VResult := FMarkDBGUI.MarksDb.MarkDb.UpdateMark(VMark, VMarkNew);
         if VResult <> nil then begin
-          FMarkDBGUI.MarksDb.MarksDb.SetMarkVisible(VResult, VVisible);
+          FMarkDBGUI.MarksDb.MarkDb.SetMarkVisible(VResult, VVisible);
         end;
       end;
     end else begin
       VImportConfig := FMarkDBGUI.MarksMultiEditModal(GetSelectedCategory);
       if (VImportConfig <> nil) then begin
         VCategory := VImportConfig.RootCategory;
-        VMarksList:=TInterfaceList.Create;
-        if VImportConfig.PointParams <> nil then begin
-          VPicName := VImportConfig.PointParams.Template.PicName;
-          VPic := FMarkDBGUI.MarksDb.MarksDb.Factory.MarkPictureList.FindByNameOrDefault(VPicName);
-        end;
+        VMarksList:=TInterfaceListSimple.Create;
         for i := 0 to VMarkIdList.Count - 1 do begin
           VMarkId := IMarkId(VMarkIdList[i]);
-          VMark:=FMarkDBGUI.MarksDb.MarksDb.GetMarkByID(VMarkId);
-          if Supports(VMark, IVectorDataItemPoint, VMarkPoint) then begin
-            VMarkNew :=
-              FMarkDBGUI.MarksDb.MarksDb.Factory.PreparePoint(
-                VMarkPoint,
-                VMarkPoint.Name,
-                VImportConfig.PointParams,
-                VCategory,
-                VPic
-              );
-          end else if Supports(VMark, IVectorDataItemLine, VMarkLine) then begin
-            VMarkNew :=
-              FMarkDBGUI.MarksDb.MarksDb.Factory.PrepareLine(
-                VMarkLine,
-                VMarkLine.Name,
-                VImportConfig.LineParams,
-                VCategory
-              );
-          end else if Supports(VMark, IVectorDataItemPoly, VMarkPoly) then begin
-            VMarkNew :=
-              FMarkDBGUI.MarksDb.MarksDb.Factory.PreparePoly(
-                VMarkPoly,
-                VMarkPoly.Name,
-                VImportConfig.PolyParams,
-                VCategory
-              );
+          VMark:=FMarkDBGUI.MarksDb.MarkDb.GetMarkByID(VMarkId);
+          VParams := nil;
+          if Supports(VMark.Geometry, IGeometryLonLatPoint) then begin
+            VParams := VImportConfig.PointParams;
+          end else if Supports(VMark.Geometry, IGeometryLonLatLine) then begin
+            VParams := VImportConfig.LineParams;
+          end else if Supports(VMark.Geometry, IGeometryLonLatPolygon) then begin
+            VParams := VImportConfig.PolyParams;
           end;
+          VMarkNew :=
+            FMarkDBGUI.MarksDb.MarkDb.Factory.PrepareMark(
+              VMark,
+              VMark.Name,
+              VParams,
+              VCategory
+            );
           if VMarkNew <> nil then begin
             VMarksList.Add(VMarkNew);
           end else begin
@@ -629,9 +608,9 @@ begin
           end;
         end;
         if (VMarksList<>nil) then begin
-          VResultList := FMarkDBGUI.MarksDb.MarksDb.UpdateMarksList(VMarkIdList, VMarksList);
+          VResultList := FMarkDBGUI.MarksDb.MarkDb.UpdateMarkList(VMarkIdList, VMarksList.MakeStaticAndClear);
           if VResultList <> nil then begin
-            FMarkDBGUI.MarksDb.MarksDb.SetMarkVisibleByIDList(VResultList, True);
+            FMarkDBGUI.MarksDb.MarkDb.SetMarkVisibleByIDList(VResultList, True);
           end;
         end;
       end;
@@ -641,37 +620,27 @@ end;
 
 procedure TfrmMarksExplorer.btnGoToMarkClick(Sender: TObject);
 var
-  VMark: IMark;
-  VMarkPoint: IMarkPoint;
-  VMarkLine: IMarkLine;
-  VMarkPoly: IMarkPoly;
+  VMark: IVectorDataItem;
 begin
   VMark := GetSelectedMarkFull;
   if VMark <> nil then begin
-    if Supports(VMark, IMarkPoint, VMarkPoint) then begin
-      FMapGoto.GotoPos(VMarkPoint.GetGoToLonLat, FViewPortState.GetStatic.Zoom, True);
-    end;
-    if Supports(VMark, IMarkPoly, VMarkPoly) then begin
-      FMapGoto.FitRectToScreen(VMarkPoly.GetLine.Bounds.Rect);
-      FMapGoto.ShowMarker(VMarkPoly.GetGoToLonLat);
-    end;
-    if Supports(VMark, IMarkLine, VMarkLine) then begin
-      FMapGoto.FitRectToScreen(VMarkLine.Line.Bounds.Rect);
-      FMapGoto.ShowMarker(VMarkLine.GetGoToLonLat);
-    end;
+    FMapGoto.FitRectToScreen(VMark.Geometry.Bounds.Rect);
+    FMapGoto.ShowMarker(VMark.Geometry.GetGoToPoint);
   end;
 end;
 
 procedure TfrmMarksExplorer.btnNavOnMarkClick(Sender: TObject);
 var
-  VMark: IMark;
+  VMark: IVectorDataItem;
   LL: TDoublePoint;
+  VMarkStringId: string;
 begin
   if (btnNavOnMark.Checked) then begin
     VMark := GetSelectedMarkFull;
     if VMark <> nil then begin
-      LL := VMark.GetGoToLonLat;
-      FNavToPoint.StartNavToMark(VMark.StringID, LL);
+      LL := VMark.Geometry.GetGoToPoint;
+      VMarkStringId := FMarkDBGUI.MarksDb.GetStringIdByMark(VMark);
+      FNavToPoint.StartNavToMark(VMarkStringId, LL);
     end else begin
       btnNavOnMark.Checked:=not btnNavOnMark.Checked;
     end;
@@ -682,12 +651,12 @@ end;
 
 procedure TfrmMarksExplorer.btnOpSelectMarkClick(Sender: TObject);
 var
-  VMark: IMark;
-  Vpolygon: ILonLatPolygon;
+  VMark: IVectorDataItem;
+  Vpolygon: IGeometryLonLatPolygon;
 begin
   VMark := GetSelectedMarkFull;
   if VMark <> nil then begin
-    Vpolygon := FMarkDBGUI.PolygonForOperation(VMark, FViewPortState.GetStatic.ProjectionInfo);
+    Vpolygon := FMarkDBGUI.PolygonForOperation(VMark.Geometry, FViewPortState.GetStatic.ProjectionInfo);
     if Vpolygon <> nil then begin
       FRegionProcess.ProcessPolygon(Vpolygon);
       ModalResult := mrOk;
@@ -697,7 +666,7 @@ end;
 
 procedure TfrmMarksExplorer.btnSaveMarkClick(Sender: TObject);
 var
-  VMark: IMark;
+  VMark: IVectorDataItem;
 begin
   VMark := GetSelectedMarkFull;
   if VMark <> nil then begin
@@ -825,30 +794,68 @@ procedure TfrmMarksExplorer.CategoryTreeViewDragDrop(
   Sender, Source: TObject;
   X, Y: Integer
 );
+
+  function MoveMarks(const ADestNode: TTreeNode; const AMarks: IInterfaceListStatic): Boolean;
+  var
+    I: Integer;
+    VMarkIdListNew: IInterfaceListSimple;
+    VCategoryNew: ICategory;
+    VMark: IVectorDataItem;
+  begin
+    Result := False;
+    if AMarks <> nil then begin
+      VCategoryNew := GetNodeCategory(ADestNode);
+      if VCategoryNew <> nil then begin
+        VMarkIdListNew := TInterfaceListSimple.Create;
+        for I := 0 to AMarks.Count - 1 do begin
+          VMark := FMarkDBGUI.MarksDb.MarkDb.GetMarkByID(IMarkId(AMarks.Items[I]));
+          VMarkIdListNew.Add(FMarkDBGUI.MarksDb.MarkDb.Factory.ReplaceCategory(VMark, VCategoryNew));
+        end;
+        FMarkDBGUI.MarksDb.MarkDb.UpdateMarkList(AMarks, VMarkIdListNew.MakeStaticAndClear);
+        Result := True;
+      end;
+    end;
+  end;
+
+  procedure MoveCategory(const ADestNode, ASourceNode: TTreeNode);
+  var
+    I: Integer;
+    VNewName: string;
+    VDestCategory: ICategory;
+    VOldCategory, VNewCategory: IMarkCategory;
+  begin
+    VDestCategory := GetNodeCategory(ADestNode);
+    VOldCategory := GetNodeCategory(ASourceNode);
+    if (VDestCategory <> nil) and (VOldCategory <> nil) then begin
+      // get new name for category
+      VNewName := VOldCategory.Name;
+      I := LastDelimiter('\', VNewName);
+      VNewName := VDestCategory.Name + '\' + Copy(VNewName, I + 1, MaxInt);
+      // modify category with all subcategories
+      VNewCategory := FMarkDBGUI.MarksDb.CategoryDB.Factory.Modify(
+        VOldCategory,
+        VNewName,
+        VOldCategory.Visible,
+        VOldCategory.AfterScale,
+        VOldCategory.BeforeScale
+      );
+      FMarkDBGUI.MarksDb.CategoryDB.UpdateCategory(VOldCategory, VNewCategory);
+    end;
+  end;
+
 var
   VNode: TTreeNode;
-  VMarkIdList: IInterfaceList;
-  VMarkIdListNew: IInterfaceList;
-  VCategoryNew: ICategory;
-  VMark: IMark;
-  i: Integer;
 begin
-  if (Source<>MarksListBox) then
-    Exit;
   VNode := CategoryTreeView.GetNodeAt(X, Y);
-  if (VNode<>nil) and (VNode<>CategoryTreeView.Selected) then begin
-    // replace category for all selected marks in selected category
-    VMarkIdList := GetSelectedMarksIdList;
-    if (VMarkIdList<>nil) then begin
-      VCategoryNew := GetNodeCategory(VNode);
-      if VCategoryNew <> nil then begin
-        VMarkIdListNew := TInterfaceList.Create;
-        for i := 0 to VMarkIdList.Count - 1 do begin
-          VMark := FMarkDBGUI.MarksDb.MarksDb.GetMarkByID(IMarkId(VMarkIdList.Items[i]));
-          VMarkIdListNew.Add(FMarkDBGUI.MarksDb.MarksDb.Factory.ReplaceCategory(VMark, VCategoryNew));
-        end;
-        FMarkDBGUI.MarksDb.MarksDb.UpdateMarksList(VMarkIdList, VMarkIdListNew);
+  if (VNode <> nil) and (VNode <> CategoryTreeView.Selected) then begin
+    if Source = MarksListBox then begin
+      // replace category for all selected marks in selected category
+      if MoveMarks(VNode, GetSelectedMarksIdList) then begin
+        MarksListBox.ClearSelection;
       end;
+    end else if Source = CategoryTreeView then begin
+      // move selected category with all subcategories to new category
+      MoveCategory(VNode, CategoryTreeView.Selected);
     end;
   end;
 end;
@@ -860,12 +867,34 @@ procedure TfrmMarksExplorer.CategoryTreeViewDragOver(
   var Accept: Boolean
 );
 var
+  I: Integer;
   VNode: TTreeNode;
+  VList: IInterfaceListStatic;
+  VOldCategory, VOldSubCategory, VNewCategory: IMarkCategory;
 begin
-  Accept := (Source=MarksListBox);
+  Accept := (Source = MarksListBox) or (Source = CategoryTreeView);
   if Accept then begin
     VNode := CategoryTreeView.GetNodeAt(X, Y);
-    Accept := (VNode<>nil) and (VNode<>CategoryTreeView.Selected);
+    Accept := (VNode <> nil) and (VNode <> CategoryTreeView.Selected);
+
+    // запрещаем перенос категории в свою же дочернюю категорию
+    if Accept and (Source = CategoryTreeView) then begin
+      VOldCategory := GetNodeCategory(CategoryTreeView.Selected);
+      VNewCategory := GetNodeCategory(VNode);
+      Accept := (VOldCategory <> nil) and (VNewCategory <> nil);
+      if Accept then begin
+        VList := FMarkDBGUI.MarksDb.CategoryDB.GetSubCategoryListForCategory(VOldCategory);
+        if VList <> nil then begin 
+          for I := 0 to VList.Count - 1 do begin
+            VOldSubCategory := IMarkCategory(VList[I]);
+            if VNewCategory.IsSame(VOldSubCategory) then begin
+              Accept := False;
+              Break;
+            end;
+          end;
+        end;
+      end;
+    end;
   end;
 end;
 
@@ -956,41 +985,28 @@ var
   VLonLat: TDoublePoint;
   VPointTemplate: IMarkTemplatePoint;
   VTemplateConfig: IMarkPointTemplateConfig;
-  VMark: IMark;
   VCategory: ICategory;
-  VVisible: Boolean;
+  VPoint: IGeometryLonLatPoint;
 begin
   VLonLat := FViewPortState.GetStatic.GetCenterLonLat;
   VCategory := GetSelectedCategory;
   VPointTemplate := nil;
   if VCategory <> nil then begin
-    VTemplateConfig := FMarkDBGUI.MarksDb.MarksFactoryConfig.PointTemplateConfig;
+    VTemplateConfig := FMarkDBGUI.MarkFactoryConfig.PointTemplateConfig;
     VPointTemplate := VTemplateConfig.DefaultTemplate;
     VPointTemplate :=
       VTemplateConfig.CreateTemplate(
-        VPointTemplate.PicName,
-        VCategory,
-        VPointTemplate.TextColor,
-        VPointTemplate.TextBgColor,
-        VPointTemplate.FontSize,
-        VPointTemplate.MarkerSize
+        VPointTemplate.Appearance,
+        VCategory
       );
   end;
-
-  VVisible := True;
-  VMark := FMarkDBGUI.MarksDb.MarksDb.Factory.CreateNewPoint(VLonLat, '', '', VPointTemplate);
-  VMark := FMarkDBGUI.EditMarkModal(VMark, True, VVisible);
-  if VMark <> nil then begin
-    VMark := FMarkDBGUI.MarksDb.MarksDb.UpdateMark(nil, VMark);
-    if VMark <> nil then begin
-      FMarkDBGUI.MarksDb.MarksDb.SetMarkVisible(VMark, VVisible);
-    end;
-  end;
+  VPoint := FGeometryLonLatFactory.CreateLonLatPoint(VLonLat);
+  FMarkDBGUI.SaveMarkModal(nil, VPoint, False, '', VPointTemplate);
 end;
 
 procedure TfrmMarksExplorer.tbitmMarkInfoClick(Sender: TObject);
 var
-  VMark: IMark;
+  VMark: IVectorDataItem;
 begin
   VMark := GetSelectedMarkFull;
   if VMark <> nil then begin
@@ -1029,7 +1045,7 @@ begin
   VCategory := GetSelectedCategory;
   if VCategory <> nil then begin
     VNewVisible := CheckBox1.Checked;
-    FMarkDBGUI.MarksDb.MarksDb.SetAllMarksInCategoryVisible(VCategory, VNewVisible);
+    FMarkDBGUI.MarksDb.MarkDb.SetAllMarksInCategoryVisible(VCategory, VNewVisible);
   end;
 end;
 
@@ -1038,7 +1054,7 @@ begin
   Self.OnResize := nil;
   FWindowConfig.ChangeNotifier.Remove(FConfigListener);
   FMarkDBGUI.MarksDb.CategoryDB.ChangeNotifier.Remove(FCategoryDBListener);
-  FMarkDBGUI.MarksDb.MarksDb.ChangeNotifier.Remove(FMarksDBListener);
+  FMarkDBGUI.MarksDb.MarkDb.ChangeNotifier.Remove(FMarksDBListener);
   FMarksShowConfig.ChangeNotifier.Remove(FMarksShowConfigListener);
   FMarkDBGUI.MarksDb.State.ChangeNotifier.Remove(FMarksSystemStateListener);
   CategoryTreeView.OnChange:=nil;
@@ -1055,13 +1071,20 @@ begin
   end;
 end;
 
+procedure TfrmMarksExplorer.WMGetMinMaxInfo(var Msg: TWMGetMinMaxInfo);
+begin
+  inherited;
+  Msg.MinMaxInfo.ptMinTrackSize.X := 406;
+  Msg.MinMaxInfo.ptMinTrackSize.Y := 309;
+end;
+
 procedure TfrmMarksExplorer.FormShow(Sender: TObject);
 begin
   UpdateCategoryTree;
   UpdateMarksList;
   btnNavOnMark.Checked:= FNavToPoint.IsActive;
   FMarkDBGUI.MarksDb.CategoryDB.ChangeNotifier.Add(FCategoryDBListener);
-  FMarkDBGUI.MarksDb.MarksDb.ChangeNotifier.Add(FMarksDBListener);
+  FMarkDBGUI.MarksDb.MarkDb.ChangeNotifier.Add(FMarksDBListener);
   FMarksShowConfig.ChangeNotifier.Add(FMarksShowConfigListener);
   FMarkDBGUI.MarksDb.State.ChangeNotifier.Add(FMarksSystemStateListener);
   FWindowConfig.ChangeNotifier.Add(FConfigListener);
@@ -1085,34 +1108,24 @@ end;
 
 procedure TfrmMarksExplorer.MarksListBoxDblClick(Sender: TObject);
 var
-  VMark: IMark;
-  VMarkPoint: IMarkPoint;
-  VMarkLine: IMarkLine;
-  VMarkPoly: IMarkPoly;
+  VMark: IVectorDataItem;
 begin
   VMark := GetSelectedMarkFull;
   if VMark <> nil then begin
-    if Supports(VMark, IMarkPoint, VMarkPoint) then begin
-      FMapGoto.GotoPos(VMark.GetGoToLonLat, FViewPortState.GetStatic.Zoom, True);
-    end else if Supports(VMark, IMarkLine, VMarkLine) then begin
-      FMapGoto.FitRectToScreen(VMarkLine.Line.Bounds.Rect);
-      FMapGoto.ShowMarker(VMarkLine.GetGoToLonLat);
-    end else if Supports(VMark, IMarkPoly, VMarkPoly) then begin
-      FMapGoto.FitRectToScreen(VMarkPoly.LLRect.Rect);
-      FMapGoto.ShowMarker(VMarkPoly.GetGoToLonLat);
-    end;
+    FMapGoto.FitRectToScreen(VMark.Geometry.Bounds.Rect);
+    FMapGoto.ShowMarker(VMark.Geometry.GetGoToPoint);
   end;
 end;
 
 procedure TfrmMarksExplorer.MarksListBoxKeyDown(Sender: TObject; var Key: Word;
     Shift: TShiftState);
 var
-  VMarkIdList: IInterfaceList;
+  VMarkIdList: IInterfaceListStatic;
 begin
   if Key = VK_SPACE then begin
     VMarkIdList:=GetSelectedMarksIdList;
     if (VMarkIdList <> nil) and (VMarkIdList.Count > 0) then begin
-      FMarkDBGUI.MarksDb.MarksDb.ToggleMarkVisibleByIDList(VMarkIdList);
+      FMarkDBGUI.MarksDb.MarkDb.ToggleMarkVisibleByIDList(VMarkIdList);
     end;
     Key := 0;
   end else if Key = VK_RETURN then begin
@@ -1139,10 +1152,10 @@ begin
     VMarkId := IMarkId(VTreeNode.Data);
     if VMarkId <> nil then begin
       if VTreeNode.StateIndex=1 then begin
-        FMarkDBGUI.MarksDb.MarksDb.SetMarkVisibleByID(VMarkId, False);
+        FMarkDBGUI.MarksDb.MarkDb.SetMarkVisibleByID(VMarkId, False);
         VTreeNode.StateIndex:=2;
       end else begin
-        FMarkDBGUI.MarksDb.MarksDb.SetMarkVisibleByID(VMarkId, True);
+        FMarkDBGUI.MarksDb.MarkDb.SetMarkVisibleByID(VMarkId, True);
         VTreeNode.StateIndex:=1;
       end;
     end;

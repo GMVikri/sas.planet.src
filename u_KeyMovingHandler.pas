@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2013, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_KeyMovingHandler;
@@ -25,7 +25,6 @@ interface
 uses
   Windows,
   Classes,
-  Forms,
   t_GeoTypes,
   i_ViewPortState,
   i_KeyMovingConfig,
@@ -49,7 +48,7 @@ type
       const ATick: Int64
     ): Double;
   public
-    constructor Create(AConfig: IKeyMovingConfig);
+    constructor Create(const AConfig: IKeyMovingConfig);
   end;
 
   TKeyMovingHandler = class(TBaseInterfacedObject, IMessageHandler)
@@ -63,15 +62,8 @@ type
     FVertical: TMovmentByDirection;
     FHorizontal: TMovmentByDirection;
     FKeyboardActive: Boolean;
-
-    FKeyMovingLastTick: Int64;
-    FTimeFromFirstToLast: Double;
-    FWasSecondKeyPress: Boolean;
-    FMapMoveAnimtion: Boolean;
-    FMoveVector: TPoint;
   private
     procedure OnTime;
-    procedure MapMoveAnimate;
     procedure DoMessageEvent(
       var Msg: TMsg;
       var Handled: Boolean
@@ -115,7 +107,7 @@ end;
 
 destructor TKeyMovingHandler.Destroy;
 begin
-  if FTimerNotifier <> nil then begin
+  if Assigned(FTimerNotifier) and Assigned(FTimerListener) then begin
     FTimerNotifier.Remove(FTimerListener);
     FTimerNotifier := nil;
     FTimerListener := nil;
@@ -141,72 +133,6 @@ begin
           OnTime;
         end;
       end;
-    end;
-  end;
-end;
-
-procedure TKeyMovingHandler.MapMoveAnimate;
-var
-  VPointDelta: TDoublePoint;
-  VCurrTick, VFr: Int64;
-  VTimeFromLast: Double;
-  VDrawTimeFromLast: Double;
-  VStep: Double;
-  VStartSpeed: Double;
-  VAcelerateTime: Double;
-  VMaxSpeed: Double;
-  VAcelerate: Double;
-  VAllKeyUp: Boolean;
-begin
-  if not (FMapMoveAnimtion) then begin
-    FMapMoveAnimtion := True;
-    try
-      QueryPerformanceCounter(VCurrTick);
-      QueryPerformanceFrequency(VFr);
-      FWasSecondKeyPress := True;
-      FKeyMovingLastTick := VCurrTick;
-      FTimeFromFirstToLast := 0;
-      VTimeFromLast := 0;
-      FConfig.LockRead;
-      try
-        VStartSpeed := FConfig.MinPixelPerSecond;
-        VMaxSpeed := FConfig.MaxPixelPerSecond;
-        VAcelerateTime := FConfig.SpeedChangeTime;
-      finally
-        FConfig.UnlockRead;
-      end;
-
-      repeat
-        VDrawTimeFromLast := (VCurrTick - FKeyMovingLastTick) / VFr;
-        VTimeFromLast := VTimeFromLast + 0.3 * (VDrawTimeFromLast - VTimeFromLast);
-        if (FTimeFromFirstToLast >= VAcelerateTime) or (VAcelerateTime < 0.01) then begin
-          VStep := VMaxSpeed * VTimeFromLast;
-        end else begin
-          VAcelerate := (VMaxSpeed - VStartSpeed) / VAcelerateTime;
-          VStep := (VStartSpeed + VAcelerate * (FTimeFromFirstToLast + VTimeFromLast / 2)) * VTimeFromLast;
-        end;
-        FKeyMovingLastTick := VCurrTick;
-        FTimeFromFirstToLast := FTimeFromFirstToLast + VTimeFromLast;
-
-        VPointDelta.x := FMoveVector.x * VStep;
-        VPointDelta.y := FMoveVector.y * VStep;
-
-        FViewPortState.ChangeMapPixelByLocalDelta(VPointDelta);
-
-        application.ProcessMessages;
-        QueryPerformanceCounter(VCurrTick);
-        QueryPerformanceFrequency(VFr);
-
-        VAllKeyUp := (GetAsyncKeyState(VK_RIGHT) = 0) and
-          (GetAsyncKeyState(VK_LEFT) = 0) and
-          (GetAsyncKeyState(VK_DOWN) = 0) and
-          (GetAsyncKeyState(VK_UP) = 0);
-        if VAllKeyUp then begin
-          FMoveVector := Point(0, 0);
-        end;
-      until ((FMoveVector.x = 0) and (FMoveVector.y = 0));
-    finally
-      FMapMoveAnimtion := false;
     end;
   end;
 end;
@@ -256,7 +182,7 @@ end;
 
 { TMovmentByDirection }
 
-constructor TMovmentByDirection.Create(AConfig: IKeyMovingConfig);
+constructor TMovmentByDirection.Create(const AConfig: IKeyMovingConfig);
 begin
   inherited Create;
   FConfig := AConfig;

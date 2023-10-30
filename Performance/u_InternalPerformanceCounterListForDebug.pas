@@ -1,30 +1,45 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_InternalPerformanceCounterListForDebug;
 
 interface
 
 uses
+  SysUtils,
   ActiveX,
   i_IDList,
+  i_InterfaceListSimple,
   i_InternalPerformanceCounter,
   i_InternalPerformanceCounterListForDebug;
 
 type
-  TInternalPerformanceCounterListForDebug = class(TInterfacedObject, IInternalPerformanceCounterList, IInternalPerformanceCounterListForDebug)
+  TInternalPerformanceCounterListForDebug = class(TInterfacedObject, IInternalPerformanceCounterListForDebug)
   private
     FName: string;
     FFactory: IInternalPerformanceCounterFactory;
     FList: IIDInterfaceList;
-  private
-    function GetName: string;
-
-    function GetStaticDataList: IIDInterfaceList;
-    procedure AppendStaticDataToList(const ADataList: IIDInterfaceList);
-    function GetEunm: IEnumUnknown;
-    function CreateAndAddNewCounter(const AName: string): IInternalPerformanceCounter;
-    function CreateAndAddNewSubList(const AName: string): IInternalPerformanceCounterList;
-    procedure AddSubList(const ASubList: IInternalPerformanceCounterList);
+    FCS: IReadWriteSync;
   private
     function GetCounterByClass(AClass: TClass): IInternalPerformanceCounterListForDebugOneClass;
+    procedure AddStaticDataToList(const AList: IInterfaceListSimple);
   public
     constructor Create(
       const AName: string;
@@ -36,37 +51,21 @@ implementation
 
 uses
   u_IDInterfaceList,
+  u_Synchronizer,
   u_InternalPerformanceCounterListForDebugOneClass;
 
 { TInternalPerformanceCounterListForDebug }
 
-constructor TInternalPerformanceCounterListForDebug.Create(const AName: string;
-  const AFactory: IInternalPerformanceCounterFactory);
+constructor TInternalPerformanceCounterListForDebug.Create(
+  const AName: string;
+  const AFactory: IInternalPerformanceCounterFactory
+);
 begin
   inherited Create;
   FName := AName;
   FFactory := AFactory;
-  FList := TIDInterfaceList.Create(False);
-end;
-
-procedure TInternalPerformanceCounterListForDebug.AddSubList(
-  const ASubList: IInternalPerformanceCounterList);
-begin
-  Assert(False);
-end;
-
-function TInternalPerformanceCounterListForDebug.CreateAndAddNewCounter(
-  const AName: string): IInternalPerformanceCounter;
-begin
-  Assert(False);
-  Result := nil;
-end;
-
-function TInternalPerformanceCounterListForDebug.CreateAndAddNewSubList(
-  const AName: string): IInternalPerformanceCounterList;
-begin
-  Assert(False);
-  Result := nil;
+  FCS := GSync.SyncVariable.Make(Self.ClassName);
+  FList := TIDInterfaceList.Create(False, 4000);
 end;
 
 function TInternalPerformanceCounterListForDebug.GetCounterByClass(
@@ -75,25 +74,28 @@ var
   VId: Integer;
 begin
   VId := Integer(AClass);
-  Result := IInternalPerformanceCounterListForDebugOneClass(FList.GetByID(VId));
+  FCS.BeginRead;
+  try
+    Result := IInternalPerformanceCounterListForDebugOneClass(FList.GetByID(VId));
+  finally
+    FCS.EndRead;
+  end;
   if Result = nil then begin
-    Result := TInternalPerformanceCounterListForDebugOneClass.Create(AClass, FFactory);
-    FList.Add(VId, Result);
+    FCS.BeginWrite;
+    try
+      Result := IInternalPerformanceCounterListForDebugOneClass(FList.GetByID(VId));
+      if Result = nil then begin
+        Result := TInternalPerformanceCounterListForDebugOneClass.Create(FName + '/' + AClass.ClassName, FFactory);
+        FList.Add(VId, Result);
+      end;
+    finally
+      FCS.EndWrite;
+    end;
   end;
 end;
 
-function TInternalPerformanceCounterListForDebug.GetEunm: IEnumUnknown;
-begin
-  Result := FList.GetEnumUnknown;
-end;
-
-function TInternalPerformanceCounterListForDebug.GetName: string;
-begin
-  Result := FName;
-end;
-
-procedure TInternalPerformanceCounterListForDebug.AppendStaticDataToList(
-  const ADataList: IIDInterfaceList);
+procedure TInternalPerformanceCounterListForDebug.AddStaticDataToList(
+  const AList: IInterfaceListSimple);
 var
   VEnum: IEnumUnknown;
   VItem: IInternalPerformanceCounterListForDebugOneClass;
@@ -101,15 +103,11 @@ var
 begin
   VEnum := FList.GetEnumUnknown;
   while VEnum.Next(1, VItem, @VCnt) = S_OK do begin
-    ADataList.Add(VItem.CounterCreate.Id, VItem.CounterCreate.GetStaticData);
-    ADataList.Add(VItem.CounterDestroy.Id, VItem.CounterDestroy.GetStaticData);
+    if Assigned(VItem) then begin
+      AList.Add(VItem.CounterCreate.GetStaticData);
+      AList.Add(VItem.CounterDestroy.GetStaticData);
+    end;
   end;
-end;
-
-function TInternalPerformanceCounterListForDebug.GetStaticDataList: IIDInterfaceList;
-begin
-  Result := TIDInterfaceList.Create;
-  AppendStaticDataToList(Result);
 end;
 
 end.

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit t_ETS_Tiles;
@@ -37,7 +37,7 @@ const
 
   // operation completed successfully (end of enumerator,...)
   ETS_RESULT_COMPLETED_SUCCESSFULLY = 3;
-  
+
   // access to storage is restricted (4-7)
   ETS_RESULT_NO_SPACE_AVAILABLE = 4;
   // access to storage is disabled (at host!)
@@ -46,7 +46,7 @@ const
   ETS_RESULT_SUSPENDED = 6;
   // service is in read-only mode (cannot execute insert, update or create)
   ETS_RESULT_READ_ONLY = 7;
-  
+
 
   // enumerator errors (8-15)
   ETS_RESULT_ENUM_TABLE_STRUCT        = 10; // failed to fetch from tile table because of incorrect structure
@@ -186,7 +186,7 @@ const
 
   // value for empty item in path (server\database\table or server\$\table or database\$\table)
   ETS_EMPTY_SOURCE_FIELD = '$';
-  
+
 type
   // only numeric xyz
   // z from 1 to 26
@@ -245,7 +245,7 @@ type
     dwOptionsIn: LongWord; // ETS_ROI_* constants
   end;
   PETS_SELECT_TILE_IN = ^TETS_SELECT_TILE_IN;
-  
+
   TETS_SELECT_TILE_OUT = packed record
     dwOptionsOut: LongWord;    // ETS_ROO_* constants
     szVersionOut: Pointer;     // Optional output version (PAnsiChar or PWideChar)
@@ -277,7 +277,7 @@ type
   PETS_DELETE_TILE_IN = ^TETS_DELETE_TILE_IN;
 
   // buffers for callbacks
-  
+
   // version buffer type
   // ver_date, ver_number and other fields are omitted here
   TETS_VERSION_W = packed record
@@ -345,14 +345,14 @@ type
     contenttype_text: PWideChar; // version value (unique string, not NULL)
   end;
   PETS_CONTENTTYPE_W = ^TETS_CONTENTTYPE_W;
-  
+
   TETS_CONTENTTYPE_A = packed record
     id_contenttype: LongInt; // version identifier  (Int or SmallInt)
     contenttype_text: PAnsiChar; // version value (unique string, not NULL)
   end;
   PETS_CONTENTTYPE_A = ^TETS_CONTENTTYPE_A;
 
-  
+
   // version_compare buffer type
   TETS_VER_COMP_W = packed record
     id_ver_comp: AnsiChar; // ver_comp identifier  (always Ansi!)

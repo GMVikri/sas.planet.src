@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MapTypeConfigModalEditByForm;
@@ -25,8 +25,9 @@ interface
 uses
   Windows,
   i_LanguageManager,
+  i_MapTypes,
+  i_TileStorageTypeList,
   i_MapTypeConfigModalEdit,
-  u_MapType,
   u_BaseInterfacedObject,
   frm_MapTypeEdit;
 
@@ -34,13 +35,15 @@ type
   TMapTypeConfigModalEditByForm = class(TBaseInterfacedObject, IMapTypeConfigModalEdit)
   private
     FLanguageManager: ILanguageManager;
+    FTileStorageTypeList: ITileStorageTypeListStatic;
     FEditCounter: Longint;
     FfrmMapTypeEdit: TfrmMapTypeEdit;
   private
-    function EditMap(AMapType: TMapType): Boolean;
+    function EditMap(const AMapType: IMapType): Boolean;
   public
     constructor Create(
-      const ALanguageManager: ILanguageManager
+      const ALanguageManager: ILanguageManager;
+      const ATileStorageTypeList: ITileStorageTypeListStatic
     );
     destructor Destroy; override;
   end;
@@ -53,11 +56,13 @@ uses
 { TMapTypeConfigModalEditByForm }
 
 constructor TMapTypeConfigModalEditByForm.Create(
-  const ALanguageManager: ILanguageManager
+  const ALanguageManager: ILanguageManager;
+  const ATileStorageTypeList: ITileStorageTypeListStatic
 );
 begin
   inherited Create;
   FLanguageManager := ALanguageManager;
+  FTileStorageTypeList := ATileStorageTypeList;
   FEditCounter := 0;
 end;
 
@@ -71,7 +76,7 @@ begin
   inherited;
 end;
 
-function TMapTypeConfigModalEditByForm.EditMap(AMapType: TMapType): Boolean;
+function TMapTypeConfigModalEditByForm.EditMap(const AMapType: IMapType): Boolean;
 var
   VCounter: Longint;
 begin
@@ -79,7 +84,11 @@ begin
   try
     if VCounter = 1 then begin
       if FfrmMapTypeEdit = nil then begin
-        FfrmMapTypeEdit := TfrmMapTypeEdit.Create(FLanguageManager);
+        FfrmMapTypeEdit :=
+          TfrmMapTypeEdit.Create(
+            FLanguageManager,
+            FTileStorageTypeList
+          );
       end;
       Result := FfrmMapTypeEdit.EditMapModadl(AMapType);
     end else begin

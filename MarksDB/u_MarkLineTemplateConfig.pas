@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MarkLineTemplateConfig;
@@ -23,13 +23,14 @@ unit u_MarkLineTemplateConfig;
 interface
 
 uses
-  GR32,
   i_ConfigDataProvider,
   i_ConfigDataWriteProvider,
   i_LanguageManager,
+  i_Appearance,
+  i_AppearanceOfMarkFactory,
   i_MarkTemplate,
   i_Category,
-  i_MarksFactoryConfig,
+  i_MarkFactoryConfig,
   u_MarkTemplateConfigBase;
 
 type
@@ -41,15 +42,15 @@ type
     procedure DoWriteConfig(const AConfigData: IConfigDataWriteProvider); override;
   protected
     function CreateTemplate(
-      const ACategory: ICategory;
-      ALineColor: TColor32;
-      ALineWidth: Integer
+      const AAppearance: IAppearance;
+      const ACategory: ICategory
     ): IMarkTemplateLine;
 
     function GetDefaultTemplate: IMarkTemplateLine;
     procedure SetDefaultTemplate(const AValue: IMarkTemplateLine);
   public
     constructor Create(
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const ALanguageManager: ILanguageManager
     );
   end;
@@ -57,6 +58,7 @@ type
 implementation
 
 uses
+  GR32,
   i_StringConfigDataElement,
   u_StringConfigDataElementWithDefByStringRec,
   u_ConfigProviderHelpers,
@@ -67,10 +69,12 @@ uses
 { TMarkLineTemplateConfig }
 
 constructor TMarkLineTemplateConfig.Create(
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const ALanguageManager: ILanguageManager
 );
 var
   VFormatString: IStringConfigDataElement;
+  VAppearance: IAppearance;
 begin
   VFormatString :=
     TStringConfigDataElementWithDefByStringRec.Create(
@@ -80,20 +84,22 @@ begin
       True,
       @SAS_STR_NewPath
     );
-  inherited Create(VFormatString);
-
-  FDefaultTemplate :=
-    CreateTemplate(
-      nil,
+  inherited Create(AAppearanceOfMarkFactory, VFormatString);
+  VAppearance :=
+    AppearanceOfMarkFactory.CreateLineAppearance(
       SetAlpha(clRed32, 166),
       2
+    );
+  FDefaultTemplate :=
+    CreateTemplate(
+      VAppearance,
+      nil
     );
 end;
 
 function TMarkLineTemplateConfig.CreateTemplate(
-  const ACategory: ICategory;
-  ALineColor: TColor32;
-  ALineWidth: Integer
+  const AAppearance: IAppearance;
+  const ACategory: ICategory
 ): IMarkTemplateLine;
 var
   VCategory: ICategory;
@@ -107,8 +113,7 @@ begin
     TMarkTemplateLine.Create(
       NameGenerator,
       VCategory,
-      ALineColor,
-      ALineWidth
+      AAppearance
     );
 end;
 
@@ -120,22 +125,26 @@ var
   VLineColor: TColor32;
   VLineWidth: Integer;
   VTemplate: IMarkTemplateLine;
+  VAppearance: IAppearance;
 begin
   inherited;
   VCategoryName := FDefaultTemplate.Category.Name;
-  VLineColor := FDefaultTemplate.LineColor;
-  VLineWidth := FDefaultTemplate.LineWidth;
+  VLineColor := FDefaultTemplate.LineAppearance.LineColor;
+  VLineWidth := FDefaultTemplate.LineAppearance.LineWidth;
   if AConfigData <> nil then begin
     VCategoryName := AConfigData.ReadString('CategoryName', VCategoryName);
     VLineColor := ReadColor32(AConfigData, 'LineColor', VLineColor);
     VLineWidth := AConfigData.ReadInteger('LineWidth', VLineWidth);
   end;
-  VTemplate :=
-    TMarkTemplateLine.Create(
-      NameGenerator,
-      TCategory.Create(VCategoryName),
+  VAppearance :=
+    AppearanceOfMarkFactory.CreateLineAppearance(
       VLineColor,
       VLineWidth
+    );
+  VTemplate :=
+    CreateTemplate(
+      VAppearance,
+      TCategory.Create(VCategoryName)
     );
 
   SetDefaultTemplate(VTemplate);
@@ -147,8 +156,8 @@ procedure TMarkLineTemplateConfig.DoWriteConfig(
 begin
   inherited;
   AConfigData.WriteString('CategoryName', FDefaultTemplate.Category.Name);
-  WriteColor32(AConfigData, 'LineColor', FDefaultTemplate.LineColor);
-  AConfigData.WriteInteger('LineWidth', FDefaultTemplate.LineWidth);
+  WriteColor32(AConfigData, 'LineColor', FDefaultTemplate.LineAppearance.LineColor);
+  AConfigData.WriteInteger('LineWidth', FDefaultTemplate.LineAppearance.LineWidth);
 end;
 
 function TMarkLineTemplateConfig.GetDefaultTemplate: IMarkTemplateLine;

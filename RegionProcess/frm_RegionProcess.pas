@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_RegionProcess;
@@ -26,7 +26,6 @@ uses
   Windows,
   SysUtils,
   Forms,
-  Buttons,
   Classes,
   Controls,
   Dialogs,
@@ -34,6 +33,10 @@ uses
   ExtCtrls,
   inifiles,
   ComCtrls,
+  TB2Item,
+  TB2Dock,
+  TB2Toolbar,
+  TBX,
   i_NotifierTime,
   i_NotifierOperation,
   i_MapViewGoto,
@@ -42,11 +45,15 @@ uses
   i_LastSelectionInfo,
   i_CoordConverterFactory,
   i_CoordConverterList,
+  i_ContentTypeManager,
   i_GlobalViewMainConfig,
-  i_VectorItemLonLat,
-  i_VectorItemsFactory,
+  i_GeometryLonLat,
+  i_GeometryLonLatFactory,
+  i_GeometryProjectedFactory,
+  i_GeometryProjectedProvider,
+  i_ImageResamplerFactory,
   i_ImageResamplerConfig,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_BitmapTileSaveLoadFactory,
   i_ArchiveReadWriteFactory,
   i_LocalCoordConverterFactorySimpe,
@@ -56,12 +63,15 @@ uses
   i_UseTilePrevZoomConfig,
   i_UsedMarksConfig,
   i_MarksDrawConfig,
-  i_MarksSystem,
-  i_MapTypes,
+  i_MarkSystem,
+  i_MapTypeSet,
+  i_MapTypeListBuilder,
   i_RegionProcess,
   i_ActiveMapsConfig,
   i_MapCalibration,
   i_TileFileNameGeneratorsList,
+  i_TileFileNameParsersList,
+  i_TileStorageTypeList,
   i_LocalCoordConverterChangeable,
   i_ValueToStringConverter,
   i_MapTypeGUIConfigList,
@@ -69,7 +79,7 @@ uses
   i_RegionProcessProgressInfoInternalFactory,
   u_ExportProviderAbstract,
   u_ProviderTilesDownload,
-  u_MarksDbGUIHelper,
+  u_MarkDbGUIHelper,
   fr_Combine,
   fr_Export;
 
@@ -83,46 +93,48 @@ type
     TabSheet4: TTabSheet;
     TabSheet5: TTabSheet;
     Button3: TButton;
-    SpeedButton1: TSpeedButton;
     SaveSelDialog: TSaveDialog;
     CBCloseWithStart: TCheckBox;
     TabSheet6: TTabSheet;
     pnlBottomButtons: TPanel;
-    SpeedButton_fit: TSpeedButton;
-    SpeedButton_mkMark: TSpeedButton;
+    TBXOperationsToolbar: TTBXToolbar;
+    tbtmMark: TTBItem;
+    tbtmZoom: TTBItem;
+    tbtmSave: TTBItem;
     procedure Button1Click(Sender: TObject);
     procedure Button3Click(Sender: TObject);
-    procedure SpeedButton1Click(Sender: TObject);
     procedure FormShow(Sender: TObject);
-    procedure SpeedButton_fitClick(Sender: TObject);
-    procedure SpeedButton_mkMarkClick(Sender: TObject);
+    procedure tbtmSaveClick(Sender: TObject);
+    procedure tbtmZoomClick(Sender: TObject);
+    procedure tbtmMarkClick(Sender: TObject);
   private
     FfrExport: TfrExport;
     FfrCombine: TfrCombine;
-    FVectorItemsFactory: IVectorItemsFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+    FVectorGeometryProjectedFactory: IGeometryProjectedFactory;
     FLastSelectionInfo: ILastSelectionInfo;
     FZoom_rect:byte;
-    FPolygonLL: ILonLatPolygon;
+    FPolygonLL: IGeometryLonLatPolygon;
     FProviderTilesDelte: TExportProviderAbstract;
     FProviderTilesGenPrev: TExportProviderAbstract;
     FProviderTilesCopy: TExportProviderAbstract;
     FProviderTilesDownload: TProviderTilesDownload;
     FMapGoto: IMapViewGoto;
-    FMarkDBGUI: TMarksDbGUIHelper;
+    FMarkDBGUI: TMarkDbGUIHelper;
     FPosition: ILocalCoordConverterChangeable;
-    procedure LoadRegion(const APolyLL: ILonLatPolygon);
-    procedure DelRegion(const APolyLL: ILonLatPolygon);
-    procedure genbacksatREG(const APolyLL: ILonLatPolygon);
-    procedure scleitRECT(const APolyLL: ILonLatPolygon);
-    procedure savefilesREG(const APolyLL: ILonLatPolygon);
-    procedure ExportREG(const APolyLL: ILonLatPolygon);
+    function LoadRegion(const APolyLL: IGeometryLonLatPolygon): Boolean;
+    function DelRegion(const APolyLL: IGeometryLonLatPolygon): Boolean;
+    function genbacksatREG(const APolyLL: IGeometryLonLatPolygon): Boolean;
+    function scleitRECT(const APolyLL: IGeometryLonLatPolygon): Boolean;
+    function savefilesREG(const APolyLL: IGeometryLonLatPolygon): Boolean;
+    function ExportREG(const APolyLL: IGeometryLonLatPolygon): Boolean;
   private
     procedure ProcessPolygon(
-      const APolygon: ILonLatPolygon
+      const APolygon: IGeometryLonLatPolygon
     );
     procedure ProcessPolygonWithZoom(
       const AZoom: Byte;
-      const APolygon: ILonLatPolygon
+      const APolygon: IGeometryLonLatPolygon
     );
   public
     constructor Create(
@@ -131,41 +143,49 @@ type
       const ATimerNoifier: INotifierTime;
       const ALastSelectionInfo: ILastSelectionInfo;
       const AMainMapsConfig: IMainMapsConfig;
+      const AMapTypeListBuilderFactory: IMapTypeListBuilderFactory;
       const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
       const APosition: ILocalCoordConverterChangeable;
       const AFullMapsSet: IMapTypeSet;
       const AGUIConfigList: IMapTypeGUIConfigList;
+      const AContentTypeManager: IContentTypeManager;
       const ACoordConverterFactory: ICoordConverterFactory;
+      const ATileStorageTypeList: ITileStorageTypeListStatic;
       const ATileNameGenerator: ITileFileNameGeneratorsList;
+      const AFileNameParsersList: ITileFileNameParsersList;
       const AViewConfig: IGlobalViewMainConfig;
       const AUseTilePrevZoomConfig: IUseTilePrevZoomConfig;
+      const AImageResamplerFactoryList: IImageResamplerFactoryList;
       const AImageResamplerConfig: IImageResamplerConfig;
       const AMarksShowConfig: IUsedMarksConfig;
       const AMarksDrawConfig: IMarksDrawConfig;
-      const AMarksDB: IMarksSystem;
+      const AMarksDB: IMarkSystem;
       const ALocalConverterFactory: ILocalCoordConverterFactorySimpe;
       const ABitmapPostProcessing: IBitmapPostProcessingChangeable;
       const AProjectionFactory: IProjectionInfoFactory;
       const ACoordConverterList: ICoordConverterList;
-      const AVectorItemsFactory: IVectorItemsFactory;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+      const AVectorGeometryProjectedFactory: IGeometryProjectedFactory;
+      const AProjectedGeometryProvider: IGeometryProjectedProvider;
+      const ABitmapFactory: IBitmap32BufferFactory;
       const ABitmapTileSaveLoadFactory: IBitmapTileSaveLoadFactory;
       const AArchiveReadWriteFactory: IArchiveReadWriteFactory;
       const AMapCalibrationList: IMapCalibrationList;
       const ADownloadConfig: IGlobalDownloadConfig;
       const ADownloadInfo: IDownloadInfoSimple;
-      const AValueToStringConverterConfig: IValueToStringConverterConfig;
+      const AValueToStringConverter: IValueToStringConverterChangeable;
       const AMapGoto: IMapViewGoto;
-      const AMarkDBGUI: TMarksDbGUIHelper
+      const AMarkDBGUI: TMarkDbGUIHelper
     ); reintroduce;
     destructor Destroy; override;
-    procedure LoadSelFromFile(const FileName:string);
+    procedure LoadSelFromFile(const AFileName:string; out APolygon: IGeometryLonLatPolygon);
     procedure StartSlsFromFile(const AFileName:string);
   end;
 
 implementation
 
 uses
+  gnugettext,
   i_ConfigDataProvider,
   i_ConfigDataWriteProvider,
   u_ConfigDataProviderByIniFile,
@@ -184,32 +204,39 @@ constructor TfrmRegionProcess.Create(
   const ATimerNoifier: INotifierTime;
   const ALastSelectionInfo: ILastSelectionInfo;
   const AMainMapsConfig: IMainMapsConfig;
+  const AMapTypeListBuilderFactory: IMapTypeListBuilderFactory;
   const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
   const APosition: ILocalCoordConverterChangeable;
   const AFullMapsSet: IMapTypeSet;
   const AGUIConfigList: IMapTypeGUIConfigList;
+  const AContentTypeManager: IContentTypeManager;
   const ACoordConverterFactory: ICoordConverterFactory;
+  const ATileStorageTypeList: ITileStorageTypeListStatic;
   const ATileNameGenerator: ITileFileNameGeneratorsList;
+  const AFileNameParsersList: ITileFileNameParsersList;
   const AViewConfig: IGlobalViewMainConfig;
   const AUseTilePrevZoomConfig: IUseTilePrevZoomConfig;
+  const AImageResamplerFactoryList: IImageResamplerFactoryList;
   const AImageResamplerConfig: IImageResamplerConfig;
   const AMarksShowConfig: IUsedMarksConfig;
   const AMarksDrawConfig: IMarksDrawConfig;
-  const AMarksDB: IMarksSystem;
+  const AMarksDB: IMarkSystem;
   const ALocalConverterFactory: ILocalCoordConverterFactorySimpe;
   const ABitmapPostProcessing: IBitmapPostProcessingChangeable;
   const AProjectionFactory: IProjectionInfoFactory;
   const ACoordConverterList: ICoordConverterList;
-  const AVectorItemsFactory: IVectorItemsFactory;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+  const AVectorGeometryProjectedFactory: IGeometryProjectedFactory;
+  const AProjectedGeometryProvider: IGeometryProjectedProvider;
+  const ABitmapFactory: IBitmap32BufferFactory;
   const ABitmapTileSaveLoadFactory: IBitmapTileSaveLoadFactory;
   const AArchiveReadWriteFactory: IArchiveReadWriteFactory;
   const AMapCalibrationList: IMapCalibrationList;
   const ADownloadConfig: IGlobalDownloadConfig;
   const ADownloadInfo: IDownloadInfoSimple;
-  const AValueToStringConverterConfig: IValueToStringConverterConfig;
+  const AValueToStringConverter: IValueToStringConverterChangeable;
   const AMapGoto: IMapViewGoto;
-  const AMarkDBGUI: TMarksDbGUIHelper
+  const AMarkDBGUI: TMarkDbGUIHelper
 );
 var
   VProgressFactory: IRegionProcessProgressInfoInternalFactory;
@@ -217,7 +244,8 @@ begin
   inherited Create(ALanguageManager);
   FLastSelectionInfo := ALastSelectionInfo;
   FPosition := APosition;
-  FVectorItemsFactory := AVectorItemsFactory;
+  FVectorGeometryLonLatFactory := AVectorGeometryLonLatFactory;
+  FVectorGeometryProjectedFactory := AVectorGeometryProjectedFactory;
   FMapGoto := AMapGoto;
   FMarkDBGUI:=AMarkDBGUI;
   VProgressFactory :=
@@ -234,11 +262,13 @@ begin
       AMainMapsConfig,
       AFullMapsSet,
       AGUIConfigList,
+      AMapTypeListBuilderFactory,
       ACoordConverterFactory,
       ALocalConverterFactory,
       AProjectionFactory,
-      AVectorItemsFactory,
+      AVectorGeometryProjectedFactory,
       ABitmapFactory,
+      ABitmapPostProcessing,
       ABitmapTileSaveLoadFactory,
       AArchiveReadWriteFactory,
       ATileNameGenerator
@@ -252,7 +282,7 @@ begin
       AFullMapsSet,
       AGUIConfigList,
       AProjectionFactory,
-      AVectorItemsFactory
+      AVectorGeometryProjectedFactory
     );
   FProviderTilesGenPrev :=
     TProviderTilesGenPrev.Create(
@@ -263,8 +293,9 @@ begin
       AGUIConfigList,
       AViewConfig,
       AProjectionFactory,
-      AVectorItemsFactory,
+      AVectorGeometryProjectedFactory,
       ABitmapFactory,
+      AImageResamplerFactoryList,
       AImageResamplerConfig
     );
   FProviderTilesCopy :=
@@ -276,8 +307,12 @@ begin
       AGlobalBerkeleyDBHelper,
       AFullMapsSet,
       AGUIConfigList,
+      AMapTypeListBuilderFactory,
+      AContentTypeManager,
       AProjectionFactory,
-      AVectorItemsFactory,
+      AVectorGeometryProjectedFactory,
+      ATileStorageTypeList,
+      AFileNameParsersList,
       ATileNameGenerator
     );
   FProviderTilesDownload :=
@@ -285,12 +320,13 @@ begin
       AAppClosingNotifier,
       VProgressFactory,
       ALanguageManager,
-      AValueToStringConverterConfig,
+      AValueToStringConverter,
       AMainMapsConfig,
       AFullMapsSet,
       AGUIConfigList,
       AProjectionFactory,
-      AVectorItemsFactory,
+      AVectorGeometryLonLatFactory,
+      AVectorGeometryProjectedFactory,
       ADownloadConfig,
       ADownloadInfo
     );
@@ -305,7 +341,8 @@ begin
       AUseTilePrevZoomConfig,
       AProjectionFactory,
       ACoordConverterList,
-      AVectorItemsFactory,
+      AVectorGeometryProjectedFactory,
+      AProjectedGeometryProvider,
       ABitmapTileSaveLoadFactory,
       AArchiveReadWriteFactory,
       AMarksShowConfig,
@@ -329,16 +366,18 @@ begin
   inherited;
 end;
 
-procedure TfrmRegionProcess.LoadSelFromFile(const FileName: string);
+procedure TfrmRegionProcess.LoadSelFromFile(
+  const AFileName: string;
+  out APolygon: IGeometryLonLatPolygon
+);
 var
   VIniFile:TMemIniFile;
   VHLGData: IConfigDataProvider;
   VPolygonSection: IConfigDataProvider;
-  VPolygon: ILonLatPolygon;
   VZoom: Byte;
 begin
-  if FileExists(FileName) then begin
-    VIniFile := TMemIniFile.Create(FileName);
+  if FileExists(AFileName) then begin
+    VIniFile := TMemIniFile.Create(AFileName);
     try
       VHLGData := TConfigDataProviderByIniFile.CreateWithOwn(VIniFile);
       VIniFile := nil;
@@ -347,16 +386,18 @@ begin
     end;
     VPolygonSection := VHLGData.GetSubItem('HIGHLIGHTING');
     if VPolygonSection <> nil then begin
-      VPolygon := ReadPolygon(VPolygonSection, FVectorItemsFactory);
-      if (VPolygon <> nil) and (VPolygon.Count > 0) then begin
+      APolygon := ReadPolygon(VPolygonSection, FVectorGeometryLonLatFactory);
+      if (APolygon <> nil) and (not APolygon.IsEmpty) then begin
         VZoom := VPolygonSection.ReadInteger('zoom', 1) - 1;
-        Self.ProcessPolygonWithZoom(VZoom, VPolygon);
+        Self.ProcessPolygonWithZoom(VZoom, APolygon);
       end;
     end;
-  end
+  end else begin
+    ShowMessageFmt(_('Can''t open file: %s'), [AFileName]);
+  end;
 end;
 
-procedure TfrmRegionProcess.ProcessPolygon(const APolygon: ILonLatPolygon);
+procedure TfrmRegionProcess.ProcessPolygon(const APolygon: IGeometryLonLatPolygon);
 begin
   FZoom_rect := FPosition.GetStatic.Zoom;
   FPolygonLL := APolygon;
@@ -365,7 +406,7 @@ begin
 end;
 
 procedure TfrmRegionProcess.ProcessPolygonWithZoom(const AZoom: Byte;
-  const APolygon: ILonLatPolygon);
+  const APolygon: IGeometryLonLatPolygon);
 begin
   FZoom_rect := AZoom;
   FPolygonLL := APolygon;
@@ -373,49 +414,72 @@ begin
   Self.Show;
 end;
 
-procedure TfrmRegionProcess.DelRegion(const APolyLL: ILonLatPolygon);
+function TfrmRegionProcess.DelRegion(const APolyLL: IGeometryLonLatPolygon): Boolean;
 begin
-  FProviderTilesDelte.StartProcess(APolyLL);
+  Result := FProviderTilesDelte.Validate;
+  if Result then begin
+    FProviderTilesDelte.StartProcess(APolyLL);
+  end;
 end;
 
-procedure TfrmRegionProcess.ExportREG(const APolyLL: ILonLatPolygon);
+function TfrmRegionProcess.ExportREG(const APolyLL: IGeometryLonLatPolygon): Boolean;
 begin
-  FfrExport.StartProcess(APolyLL);
+  Result := FfrExport.Validate;
+  if Result then begin
+    FfrExport.StartProcess(APolyLL);
+  end;
 end;
 
-procedure TfrmRegionProcess.savefilesREG(const APolyLL: ILonLatPolygon);
+function TfrmRegionProcess.savefilesREG(const APolyLL: IGeometryLonLatPolygon): Boolean;
 begin
-  FProviderTilesCopy.StartProcess(APolyLL);
+  Result := FProviderTilesCopy.Validate;
+  if Result then begin
+    FProviderTilesCopy.StartProcess(APolyLL);
+  end;
 end;
 
-procedure TfrmRegionProcess.LoadRegion(const APolyLL: ILonLatPolygon);
+function TfrmRegionProcess.LoadRegion(const APolyLL: IGeometryLonLatPolygon): Boolean;
 begin
-  FProviderTilesDownload.StartProcess(APolyLL);
+  Result := FProviderTilesDownload.Validate;
+  if Result then begin
+    FProviderTilesDownload.StartProcess(APolyLL);
+  end;
 end;
 
-procedure TfrmRegionProcess.genbacksatREG(const APolyLL: ILonLatPolygon);
+function TfrmRegionProcess.genbacksatREG(const APolyLL: IGeometryLonLatPolygon): Boolean;
 begin
-  FProviderTilesGenPrev.StartProcess(APolyLL);
+  Result := FProviderTilesGenPrev.Validate;
+  if Result then begin
+    FProviderTilesGenPrev.StartProcess(APolyLL);
+  end;
 end;
 
-procedure TfrmRegionProcess.scleitRECT(const APolyLL: ILonLatPolygon);
+function TfrmRegionProcess.scleitRECT(const APolyLL: IGeometryLonLatPolygon): Boolean;
 begin
-  FfrCombine.StartProcess(APolyLL);
+  Result := FfrCombine.Validate;
+  if Result then begin
+    FfrCombine.StartProcess(APolyLL);
+  end;
 end;
 
 
 procedure TfrmRegionProcess.Button1Click(Sender: TObject);
+var
+  VResult: Boolean;
 begin
- case PageControl1.ActivePage.Tag of
-  0: LoadRegion(FPolygonLL);
-  1: scleitRECT(FPolygonLL);
-  2: genbacksatREG(FPolygonLL);
-  3: DelRegion(FPolygonLL);
-  4: ExportREG(FPolygonLL);
-  5: savefilesREG(FPolygonLL);
- end;
-  if CBCloseWithStart.Checked then begin
-    close;
+  VResult := False;
+  case PageControl1.ActivePage.Tag of
+    0: VResult := LoadRegion(FPolygonLL);
+    1: VResult := scleitRECT(FPolygonLL);
+    2: VResult := genbacksatREG(FPolygonLL);
+    3: VResult := DelRegion(FPolygonLL);
+    4: VResult := ExportREG(FPolygonLL);
+    5: VResult := savefilesREG(FPolygonLL);
+  end;
+  if VResult then begin
+    if CBCloseWithStart.Checked then begin
+      close;
+    end;
   end;
 end;
 
@@ -436,23 +500,18 @@ begin
   close;
 end;
 
-procedure TfrmRegionProcess.SpeedButton1Click(Sender: TObject);
+procedure TfrmRegionProcess.tbtmMarkClick(Sender: TObject);
 var
   VIniFile: Tinifile;
   VZoom: Byte;
-  VPolygon: ILonLatPolygon;
+  VPolygon: IGeometryLonLatPolygon;
   VHLGData: IConfigDataWriteProvider;
   VPolygonSection: IConfigDataWriteProvider;
 begin
   if (SaveSelDialog.Execute)and(SaveSelDialog.FileName<>'') then begin
     If FileExists(SaveSelDialog.FileName) then DeleteFile(SaveSelDialog.FileName);
-    FLastSelectionInfo.LockRead;
-    try
-      VZoom := FLastSelectionInfo.Zoom;
-      VPolygon := FLastSelectionInfo.Polygon;
-    finally
-      FLastSelectionInfo.UnlockRead;
-    end;
+    VZoom := FLastSelectionInfo.Zoom;
+    VPolygon := FLastSelectionInfo.Polygon;
     if VPolygon <> nil then begin
       VIniFile := TIniFile.Create(SaveSelDialog.FileName);
       try
@@ -468,9 +527,9 @@ begin
   end;
 end;
 
-procedure TfrmRegionProcess.SpeedButton_fitClick(Sender: TObject);
+procedure TfrmRegionProcess.tbtmZoomClick(Sender: TObject);
 var
-  VPolygon: ILonLatPolygon;
+  VPolygon: IGeometryLonLatPolygon;
 begin
   VPolygon := FLastSelectionInfo.Polygon;
   if (VPolygon <> nil)  then begin
@@ -478,14 +537,18 @@ begin
   end;
 end;
 
-procedure TfrmRegionProcess.SpeedButton_mkMarkClick(Sender: TObject);
+procedure TfrmRegionProcess.tbtmSaveClick(Sender: TObject);
 begin
-  if (FLastSelectionInfo.Polygon <> nil) then FMarkDBGUI.SavePolyModal(nil, FLastSelectionInfo.Polygon);
+  if (FLastSelectionInfo.Polygon <> nil) then FMarkDBGUI.SaveMarkModal(nil, FLastSelectionInfo.Polygon);
 end;
 
 procedure TfrmRegionProcess.StartSlsFromFile(const AFileName: string);
 begin
-  FProviderTilesDownload.StartBySLS(AFileName);
+  if FileExists(AFileName) then begin
+    FProviderTilesDownload.StartBySLS(AFileName);
+  end else begin
+    ShowMessageFmt(_('Can''t open file: %s'), [AFileName]);
+  end;
 end;
 
 end.

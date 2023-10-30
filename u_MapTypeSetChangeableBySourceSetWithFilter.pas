@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MapTypeSetChangeableBySourceSetWithFilter;
 
 interface
@@ -5,11 +25,15 @@ interface
 uses
   i_Listener,
   i_MapTypes,
+  i_MapTypeSet,
+  i_MapTypeSetBuilder,
+  i_MapTypeSetChangeable,
   u_ConfigDataElementBase;
 
 type
   TMapTypeSetChangeableBySourceSetWithFilter = class(TConfigDataElementWithStaticBaseEmptySaveLoad, IMapTypeSetChangeable)
   private
+    FMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
     FSourceSet: IMapTypeSetChangeable;
     FSourceSetListener: IListener;
 
@@ -23,6 +47,7 @@ type
     function IsValidMapType(const AMapType: IMapType): Boolean; virtual;
   public
     constructor Create(
+      const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
       const ASourceSet: IMapTypeSetChangeable
     );
     destructor Destroy; override;
@@ -50,16 +75,17 @@ implementation
 
 uses
   ActiveX,
-  u_ListenerByEvent,
-  u_MapTypeSet;
+  u_ListenerByEvent;
 
 { TMapTypeSetChangeableBySourceSetWithFilter }
 
 constructor TMapTypeSetChangeableBySourceSetWithFilter.Create(
+  const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
   const ASourceSet: IMapTypeSetChangeable
 );
 begin
   inherited Create;
+  FMapTypeSetBuilderFactory := AMapTypeSetBuilderFactory;
   FSourceSet := ASourceSet;
 
   FSourceSetListener := TNotifyNoMmgEventListener.Create(Self.OnActiveMapsSetChange);
@@ -70,24 +96,23 @@ end;
 
 destructor TMapTypeSetChangeableBySourceSetWithFilter.Destroy;
 begin
-  if FSourceSet <> nil then begin
+  if Assigned(FSourceSet) and Assigned(FSourceSetListener) then begin
     FSourceSet.ChangeNotifier.Remove(FSourceSetListener);
+    FSourceSetListener := nil;
     FSourceSet := nil;
   end;
-  FSourceSetListener := nil;
   inherited;
 end;
 
 function TMapTypeSetChangeableBySourceSetWithFilter.CreateStatic: IInterface;
 var
-  VResult: TMapTypeSet;
+  VResult: IMapTypeSetBuilder;
   VEnum: IEnumGUID;
   VGuid: TGUID;
   VCnt: Cardinal;
   VMapType: IMapType;
 begin
-  VResult := TMapTypeSet.Create(False);
-  Result := IMapTypeSet(VResult);
+  VResult := FMapTypeSetBuilderFactory.Build(False);
   if FPrevSourceSetStatic <> nil then begin
     VEnum := FPrevSourceSetStatic.GetIterator;
     while VEnum.Next(1, VGuid, VCnt) = S_OK do begin
@@ -99,6 +124,7 @@ begin
       end;
     end;
   end;
+  Result := VResult.MakeAndClear;
 end;
 
 function TMapTypeSetChangeableBySourceSetWithFilter.GetStatic: IMapTypeSet;
@@ -169,7 +195,7 @@ function TMapTypeSetChangeableBySourceSetWithFilterBitmap.IsValidMapType(
   const AMapType: IMapType
 ): Boolean;
 begin
-  Result := (AMapType <> nil) and (AMapType.MapType.IsBitmapTiles);
+  Result := (AMapType <> nil) and (AMapType.IsBitmapTiles);
 end;
 
 { TMapTypeSetChangeableBySourceSetWithFilterVector }
@@ -178,7 +204,7 @@ function TMapTypeSetChangeableBySourceSetWithFilterVector.IsValidMapType(
   const AMapType: IMapType
 ): Boolean;
 begin
-  Result := (AMapType <> nil) and (AMapType.MapType.IsKmlTiles);
+  Result := (AMapType <> nil) and (AMapType.IsKmlTiles);
 end;
 
 { TMapTypeSetChangeableBySourceSetWithFilterLicenseNotEmpty }
@@ -188,7 +214,7 @@ function TMapTypeSetChangeableBySourceSetWithFilterLicenseNotEmpty.IsValidMapTyp
 begin
   Result := False;
   if AMapType <> nil then begin
-    Result := AMapType.MapType.Zmp.License.GetDefault <> '';
+    Result := AMapType.Zmp.License.GetDefault <> '';
   end;
 end;
 

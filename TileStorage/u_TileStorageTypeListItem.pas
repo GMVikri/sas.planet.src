@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageTypeListItem;
@@ -31,20 +31,26 @@ type
   TTileStorageTypeListItem = class(TBaseInterfacedObject, ITileStorageTypeListItem)
   private
     FGUID: TGUID;
+    FIntCode: Integer;
     FCaption: string;
     FStorageType: ITileStorageType;
     FCanUseAsDefault: Boolean;
+    FIsChangeable: Boolean;
   private
     function GetGUID: TGUID;
+    function GetIntCode: Integer;
     function GetCaption: string;
     function GetStorageType: ITileStorageType;
     function GetCanUseAsDefault: Boolean;
+    function GetIsChangeable: Boolean;
   public
     constructor Create(
       const AGUID: TGUID;
+      const AIntCode: Integer;
       const ACaption: string;
       const AStorageType: ITileStorageType;
-      ACanUseAsDefault: Boolean
+      ACanUseAsDefault: Boolean;
+      AIsChangeable: Boolean
     );
   end;
 
@@ -54,16 +60,20 @@ implementation
 
 constructor TTileStorageTypeListItem.Create(
   const AGUID: TGUID;
+  const AIntCode: Integer;
   const ACaption: string;
   const AStorageType: ITileStorageType;
-  ACanUseAsDefault: Boolean
+  ACanUseAsDefault: Boolean;
+  AIsChangeable: Boolean
 );
 begin
   inherited Create;
   FGUID := AGUID;
+  FIntCode := AIntCode;
   FCaption := ACaption;
   FStorageType := AStorageType;
   FCanUseAsDefault := ACanUseAsDefault;
+  FIsChangeable := AIsChangeable;
 end;
 
 function TTileStorageTypeListItem.GetCanUseAsDefault: Boolean;
@@ -79,6 +89,16 @@ end;
 function TTileStorageTypeListItem.GetGUID: TGUID;
 begin
   Result := FGUID;
+end;
+
+function TTileStorageTypeListItem.GetIntCode: Integer;
+begin
+  Result := FIntCode;
+end;
+
+function TTileStorageTypeListItem.GetIsChangeable: Boolean;
+begin
+  Result := FIsChangeable;
 end;
 
 function TTileStorageTypeListItem.GetStorageType: ITileStorageType;

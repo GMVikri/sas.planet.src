@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit fr_MarkCategorySelectOrAdd;
 
 interface
@@ -9,6 +29,7 @@ uses
   StdCtrls,
   u_CommonFormAndFrameParents,
   i_LanguageManager,
+  i_InterfaceListStatic,
   i_Category,
   i_MarkCategoryDB;
 
@@ -18,9 +39,9 @@ type
     lblCategory: TLabel;
   private
     FCategoryDB: IMarkCategoryDB;
-    FCategoryList: IInterfaceList;
+    FCategoryList: IInterfaceListStatic;
     FLastUsedCategoryName: string;
-    procedure CategoryListToStrings(const AList: IInterfaceList; AStrings: TStrings);
+    procedure CategoryListToStrings(const AList: IInterfaceListStatic; AStrings: TStrings);
   public
     constructor Create(
       const ALanguageManager: ILanguageManager;
@@ -61,7 +82,7 @@ begin
 end;
 
 procedure TfrMarkCategorySelectOrAdd.CategoryListToStrings(
-  const AList: IInterfaceList;
+  const AList: IInterfaceListStatic;
   AStrings: TStrings
 );
 var
@@ -69,16 +90,20 @@ var
   VCategory: ICategory;
 begin
   AStrings.Clear;
-  for i := 0 to AList.Count - 1 do begin
-    VCategory := ICategory(AList[i]);
-    AStrings.AddObject(VCategory.Name, Pointer(VCategory));
+  if Assigned(AList) then begin
+    for i := 0 to AList.Count - 1 do begin
+      VCategory := ICategory(AList[i]);
+      AStrings.AddObject(VCategory.Name, Pointer(VCategory));
+    end;
   end;
 end;
 
 procedure TfrMarkCategorySelectOrAdd.Clear;
 begin
   FCategoryList := nil;
-  CBKateg.Items.Clear;
+  if Assigned(CBKateg) then begin
+    CBKateg.Items.Clear;
+  end;
 end;
 
 function TfrMarkCategorySelectOrAdd.GetCategory: ICategory;

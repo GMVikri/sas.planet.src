@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MapViewPortState;
@@ -35,7 +35,7 @@ uses
   i_ConfigDataWriteProvider,
   i_InternalPerformanceCounter,
   i_ViewPortState,
-  i_ActiveMapsConfig,
+  i_MapTypes,
   i_LocalCoordConverterFactorySimpe,
   u_ConfigDataElementBase;
 
@@ -43,7 +43,7 @@ type
   TMapViewPortState = class(TConfigDataElementBase, IViewPortState)
   private
     FVisibleCoordConverterFactory: ILocalCoordConverterFactorySimpe;
-    FMainMapConfig: IMainActiveMap;
+    FMainMap: IMapTypeChangeable;
     FBaseScale: Double;
 
     FPosition: ILocalCoordConverterChangeable;
@@ -93,7 +93,7 @@ type
   public
     constructor Create(
       const ACoordConverterFactory: ILocalCoordConverterFactorySimpe;
-      const AMainMapConfig: IMainActiveMap;
+      const AMainMap: IMapTypeChangeable;
       const APerfCounterList: IInternalPerformanceCounterList
     );
     destructor Destroy; override;
@@ -103,18 +103,17 @@ implementation
 
 uses
   SysUtils,
-  i_MapTypes,
   u_ListenerByEvent,
   u_SimpleFlagWithInterlock,
   u_LocalCoordConverterChangeable,
   u_LocalConverterChangeableFixedTileRectNoScale,
-  u_GeoFun;
+  u_GeoFunc;
 
 { TMapViewPortStateNew }
 
 constructor TMapViewPortState.Create(
   const ACoordConverterFactory: ILocalCoordConverterFactorySimpe;
-  const AMainMapConfig: IMainActiveMap;
+  const AMainMap: IMapTypeChangeable;
   const APerfCounterList: IInternalPerformanceCounterList
 );
 var
@@ -129,7 +128,7 @@ begin
   inherited Create;
 
   FVisibleCoordConverterFactory := ACoordConverterFactory;
-  FMainMapConfig := AMainMapConfig;
+  FMainMap := AMainMap;
   FMainCoordConverter := nil;
 
   FMainMapChangeListener := TNotifyNoMmgEventListener.Create(Self.OnMainMapChange);
@@ -163,15 +162,15 @@ begin
       FVisibleCoordConverterFactory,
       FView
     );
-  FMainMapConfig.GetChangeNotifier.Add(FMainMapChangeListener);
+  FMainMap.ChangeNotifier.Add(FMainMapChangeListener);
 end;
 
 destructor TMapViewPortState.Destroy;
 begin
-  if FMainMapConfig <> nil then begin
-    FMainMapConfig.GetChangeNotifier.Remove(FMainMapChangeListener);
+  if Assigned(FMainMap) and Assigned(FMainMapChangeListener) then begin
+    FMainMap.ChangeNotifier.Remove(FMainMapChangeListener);
     FMainMapChangeListener := nil;
-    FMainMapConfig := nil;
+    FMainMap := nil;
   end;
   FVisibleCoordConverterFactory := nil;
   inherited;
@@ -293,13 +292,7 @@ begin
   if ANewSize.X <= 0 then begin
     raise Exception.Create('Ошибочный размер отображаемой карты');
   end;
-  if ANewSize.X > 4096 then begin
-    raise Exception.Create('Ошибочный размер отображаемой карты');
-  end;
   if ANewSize.Y <= 0 then begin
-    raise Exception.Create('Ошибочный размер отображаемой карты');
-  end;
-  if ANewSize.Y > 4096 then begin
     raise Exception.Create('Ошибочный размер отображаемой карты');
   end;
   VLocalRectNew := Rect(0, 0, ANewSize.X, ANewSize.Y);
@@ -473,15 +466,15 @@ end;
 
 function TMapViewPortState._GetActiveCoordConverter: ICoordConverter;
 var
-  VMap: IMapType;
+  VMapType: IMapType;
 begin
   Result := nil;
   if FMainCoordConverter <> nil then begin
     Result := FMainCoordConverter;
   end else begin
-    VMap := FMainMapConfig.GetActiveMap.GetStatic;
-    if VMap <> nil then begin
-      Result := VMap.MapType.ViewGeoConvert;
+    VMapType := FMainMap.GetStatic;
+    if VMapType <> nil then begin
+      Result := VMapType.ViewGeoConvert;
     end;
   end;
 end;
@@ -544,7 +537,7 @@ begin
   LockWrite;
   try
     VLocalConverter := FView.GetStatic;
-    if Abs(AScale - 1) < 0.00001 then begin
+    if Abs(AScale - 1) < 0.001 then begin
       VNewMapScale := FBaseScale;
     end else begin
       VNewMapScale := FBaseScale * AScale;

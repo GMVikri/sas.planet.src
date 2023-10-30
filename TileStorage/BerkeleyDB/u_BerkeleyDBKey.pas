@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2013, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BerkeleyDBKey;
@@ -133,6 +133,11 @@ asm
   bswap eax
 end;
 
+function Swap16(Value: Word): Word; assembler;
+asm
+   xchg al, ah
+end;
+
 procedure SetBit(var ADest: Cardinal; const ABit: Integer); inline;
 begin
   ADest := ADest or (Cardinal(1) shl ABit);
@@ -189,7 +194,7 @@ begin
     FreeMemory(FData);
     FData := nil;
   end;
-  inherited Destroy;
+  inherited;
 end;
 
 function TBerkeleyDBKey.PointToKey(const APoint: TPoint): PKey;
@@ -290,18 +295,20 @@ constructor TBerkeleyDBVersionedKey.Create(
 var
   VKey: PKey;
   VData: PByte;
+  VVersionID: Word;
 begin
   inherited Create;
   FPoint := APoint;
   FVersionID := AVersionID;
+  VVersionID := Swap16(FVersionID);
   VKey := inherited PointToKey(FPoint);
   try
-    FSize := SizeOf(TKey) + SizeOf(FVersionID);
+    FSize := SizeOf(TKey) + SizeOf(VVersionID);
     FData := GetMemory(FSize);
     VData := FData;
     Move(VKey^, VData^, SizeOf(TKey));
     Inc(VData, SizeOf(TKey));
-    Move(FVersionID, VData^, SizeOf(FVersionID));
+    Move(VVersionID, VData^, SizeOf(VVersionID));
     FOwnMem := True;
   finally
     FreeMemory(VKey);
@@ -327,7 +334,7 @@ begin
     FPoint := inherited KeyToPoint(FData);
     VData := FData;
     Inc(VData, SizeOf(TKey));
-    FVersionID := PWord(VData)^;
+    FVersionID := Swap16(PWord(VData)^);
     Result := True;
   end;
 end;
@@ -344,4 +351,4 @@ begin
   inherited Create(APoint, cBerkeleyDBVersionedMetaKeyID);
 end;
 
-end. 
+end.

@@ -1,29 +1,50 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit i_RegionProcessParamsFrame;
 
 interface
 
 uses
   Types,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   i_BitmapLayerProvider,
   i_MapCalibration,
   i_ProjectionInfo,
   i_PredicateByTileInfo,
-  u_MapType;
+  i_MapTypes;
 
 type
   IRegionProcessParamsFrameBase = interface
     ['{F5346D9B-766C-4B3B-AC4B-9AC71FF62F05}']
     procedure Init(
       const AZoom: byte;
-      const APolygon: ILonLatPolygon
+      const APolygon: IGeometryLonLatPolygon
     );
+    function Validate: Boolean;
   end;
 
   IRegionProcessParamsFrameOneMap = interface(IRegionProcessParamsFrameBase)
     ['{240B7587-DDC0-4471-BDF4-AD2EE0040526}']
-    function GetMapType: TMapType;
-    property MapType: TMapType read GetMapType;
+    function GetMapType: IMapType;
+    property MapType: IMapType read GetMapType;
   end;
 
   IRegionProcessParamsFrameOneZoom = interface(IRegionProcessParamsFrameBase)

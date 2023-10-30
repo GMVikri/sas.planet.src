@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_RegionProcessProgressInfoDownload;
 
 interface
@@ -7,7 +27,9 @@ uses
   SysUtils,
   i_LogSimple,
   i_LogSimpleProvider,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
+  i_MapVersionInfo,
+  i_MapVersionRequest,
   i_ConfigDataWriteProvider,
   i_RegionProcessProgressInfo,
   i_RegionProcessProgressInfoDownload,
@@ -18,7 +40,9 @@ type
   private
     FGUID: TGUID;
     FZoom: Byte;
-    FPolygon: ILonLatPolygon;
+    FPolygon: IGeometryLonLatPolygon;
+    FVersionForCheck: IMapVersionRequest;
+    FVersionForDownload: IMapVersionInfo;
 
     FSecondLoadTNE: boolean;
     FReplaceExistTiles: boolean;
@@ -74,8 +98,10 @@ type
       const ALog: ILogSimple;
       const ALogProvider: ILogSimpleProvider;
       const AGUID: TGUID;
+      const AVersionForCheck: IMapVersionRequest;
+      const AVersionForDownload: IMapVersionInfo;
       AZoom: Byte;
-      const APolygon: ILonLatPolygon;
+      const APolygon: IGeometryLonLatPolygon;
       ASecondLoadTNE: boolean;
       AReplaceExistTiles: boolean;
       ACheckExistTileSize: boolean;
@@ -101,8 +127,10 @@ constructor TRegionProcessProgressInfoDownload.Create(
   const ALog: ILogSimple;
   const ALogProvider: ILogSimpleProvider;
   const AGUID: TGUID;
+  const AVersionForCheck: IMapVersionRequest;
+  const AVersionForDownload: IMapVersionInfo;
   AZoom: Byte;
-  const APolygon: ILonLatPolygon;
+  const APolygon: IGeometryLonLatPolygon;
   ASecondLoadTNE: boolean;
   AReplaceExistTiles: boolean;
   ACheckExistTileSize: boolean;
@@ -117,6 +145,8 @@ constructor TRegionProcessProgressInfoDownload.Create(
 begin
   inherited Create;
   FGUID := AGUID;
+  FVersionForCheck := AVersionForCheck;
+  FVersionForDownload := AVersionForDownload;
   FZoom := AZoom;
   FPolygon := APolygon;
   FSecondLoadTNE := ASecondLoadTNE;
@@ -125,7 +155,7 @@ begin
   FCheckExistTileDate := ACheckExistTileDate;
   FCheckTileDate := ACheckTileDate;
 
-  FCS := MakeSyncRW_Var(Self, False);
+  FCS := GSync.SyncVariable.Make(Self.ClassName);
 
   FLog := ALog;
   FLogProvider := ALogProvider;
@@ -345,16 +375,29 @@ procedure TRegionProcessProgressInfoDownload.SaveState(
   const ASLSSection: IConfigDataWriteProvider);
 var
   VElapsedTime: TDateTime;
+  VVersionForCheck: string;
+  VVersionForCheckUsePrev: Boolean;
 begin
+  VVersionForCheck := '';
+  VVersionForCheckUsePrev := False;
+  if Assigned(FVersionForCheck) then begin
+    if Assigned(FVersionForCheck.BaseVersion) then begin
+      VVersionForCheck := FVersionForCheck.BaseVersion.StoreString;
+    end;
+    VVersionForCheckUsePrev := FVersionForCheck.ShowPrevVersion
+  end;
+  ASLSSection.WriteString('MapGUID', GUIDToString(FGUID));
+  ASLSSection.WriteString('VersionDownload', FVersionForDownload.StoreString);
+  ASLSSection.WriteString('VersionCheck', VVersionForCheck);
+  ASLSSection.WriteBool('VersionCheckPrev', VVersionForCheckUsePrev);
+  ASLSSection.WriteInteger('Zoom', FZoom + 1);
+  ASLSSection.WriteBool('ReplaceExistTiles', FReplaceExistTiles);
+  ASLSSection.WriteBool('CheckExistTileSize', FCheckExistTileSize);
+  ASLSSection.WriteBool('CheckExistTileDate', FCheckExistTileDate);
+  ASLSSection.WriteDate('CheckTileDate', FCheckTileDate);
+  ASLSSection.WriteBool('SecondLoadTNE', FSecondLoadTNE);
   FCS.BeginRead;
   try
-    ASLSSection.WriteString('MapGUID', GUIDToString(FGUID));
-    ASLSSection.WriteInteger('Zoom', FZoom + 1);
-    ASLSSection.WriteBool('ReplaceExistTiles', FReplaceExistTiles);
-    ASLSSection.WriteBool('CheckExistTileSize', FCheckExistTileSize);
-    ASLSSection.WriteBool('CheckExistTileDate', FCheckExistTileDate);
-    ASLSSection.WriteDate('CheckTileDate', FCheckTileDate);
-    ASLSSection.WriteBool('SecondLoadTNE', FSecondLoadTNE);
     ASLSSection.WriteInteger('ProcessedTileCount', FDownloadedCount);
     ASLSSection.WriteInteger('Processed', FProcessed);
     ASLSSection.WriteFloat('ProcessedSize', FDownloadedSize / 1024);

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_AvailPicsTerra;
@@ -44,8 +44,8 @@ type
 implementation
 
 uses
-  u_GeoToStr,
-  windows,
+  u_GeoToStrFunc,
+  u_StreamReadOnlyByBinaryData,
   u_TileRequestBuilderHelpers;
 
 function _RandInt5: String;
@@ -56,6 +56,44 @@ begin
   Result := IntToStr(i);
 end;
 
+function _ConvertToYYYYMMDD(const AText, ASep: String): String;
+var
+  VSepPos: Integer;
+  Vyyyy, Vmm, Vdd: String;
+begin
+  Result := '';
+  Vmm := '';
+  Vdd := '';
+  Vyyyy := AText;
+
+  // get m[m]
+  VSepPos := System.Pos(ASep, Vyyyy);
+  if VSepPos>0 then begin
+    Vmm := System.Copy(Vyyyy, 1, VSepPos - 1);
+    System.Delete(Vyyyy, 1, VSepPos);
+    while Length(Vmm)<2 do
+      Vmm := '0' + Vmm;
+  end;
+
+  // get d[d]
+  VSepPos := System.Pos(ASep, Vyyyy);
+  if VSepPos>0 then begin
+    Vdd := System.Copy(Vyyyy, 1, VSepPos - 1);
+    System.Delete(Vyyyy, 1, VSepPos);
+    while Length(Vdd)<2 do
+      Vdd := '0' + Vdd;
+  end;
+
+  // check all parts
+  if TryStrToInt(Vyyyy, VSepPos) then
+  if TryStrToInt(Vmm, VSepPos) then
+  if TryStrToInt(Vdd, VSepPos) then begin
+    // ok
+    Result := Vyyyy + DateSeparator + Vmm + DateSeparator + Vdd;
+  end;
+end;
+
+
 { TAvailPicsTerraserver }
 
 function TAvailPicsTerraserver.ContentType: String;
@@ -65,42 +103,6 @@ end;
 
 function TAvailPicsTerraserver.ParseResponse(const AResultOk: IDownloadResultOk): Integer;
 
-  function _ConvertToYYYYMMDD(const AText, ASep: String): String;
-  var
-    VSepPos: Integer;
-    Vyyyy, Vmm, Vdd: String;
-  begin
-    Result := '';
-    Vmm := '';
-    Vdd := '';
-    Vyyyy := AText;
-
-    // get m[m]
-    VSepPos := System.Pos(ASep, Vyyyy);
-    if VSepPos>0 then begin
-      Vmm := System.Copy(Vyyyy, 1, VSepPos-1);
-      System.Delete(Vyyyy, 1, VSepPos);
-      while Length(Vmm)<2 do
-        Vmm := '0' + Vmm;
-    end;
-
-    // get d[d]
-    VSepPos := System.Pos(ASep, Vyyyy);
-    if VSepPos>0 then begin
-      Vdd := System.Copy(Vyyyy, 1, VSepPos-1);
-      System.Delete(Vyyyy, 1, VSepPos);
-      while Length(Vdd)<2 do
-        Vdd := '0' + Vdd;
-    end;
-
-    // check all parts
-    if TryStrToInt(Vyyyy, VSepPos) then
-    if TryStrToInt(Vmm, VSepPos) then
-    if TryStrToInt(Vdd, VSepPos) then begin
-      // ok
-      Result := Vyyyy + DateSeparator + Vmm + DateSeparator + Vdd;
-    end;
-  end;
 
   function _ProcessOption(const AOptionText: String;
                           var AParams: TStrings): Boolean;
@@ -115,6 +117,11 @@ function TAvailPicsTerraserver.ParseResponse(const AResultOk: IDownloadResultOk)
     VItemExisting: Boolean;
     VItemFetched: TDateTime;
   begin
+    if GetAfter('disabled', AOptionText) <> '' then begin
+      Result := FALSE;
+      Exit
+    end;
+
     // value='dg,4c0512fac553a1d9cf226b003610efad'  selected='selected'  >5/22/2011
     VValue := AnsiLowerCase(Trim(GetAfter('>', AOptionText)));
 
@@ -178,7 +185,7 @@ function TAvailPicsTerraserver.ParseResponse(const AResultOk: IDownloadResultOk)
       VItemIdentifier := VItemIdentifier + '_' + VValue;
     end;
     VItemExisting := ItemExists(FBaseStorageName, VItemIdentifier, @VItemFetched);
-
+    StoreImageDate(VItemIdentifier, VDate);
     // add
     AParams.Values['layer'] := VLayer;
     AParams.Values['date'] := VDate;
@@ -187,7 +194,7 @@ function TAvailPicsTerraserver.ParseResponse(const AResultOk: IDownloadResultOk)
           'cx=' + RoundEx(FTileInfoPtr.LonLat.X, 4) +
           '&cy=' + RoundEx(FTileInfoPtr.LonLat.Y, 4) +
           '&mpp=5' +
-          '&proj=4326&pic=img&prov='+VValue+'&stac='+VLayer+'&ovrl=-1&drwl=' +
+          '&proj=4326&pic=img&prov=' + VValue + '&stac=' + VLayer + '&ovrl=-1&drwl=' +
           '&lgin=' + _RandInt5 +
           '&styp=&vic=';
 
@@ -203,31 +210,28 @@ function TAvailPicsTerraserver.ParseResponse(const AResultOk: IDownloadResultOk)
   end;
 
 var
+  VStream: TStreamReadOnlyByBinaryData;
   VResponse: TStringList;
   VSLParams: TStrings;
   S: String;
-  VMemoryStream: TMemoryStream;
 begin
-  VMemoryStream := TMemoryStream.Create;
-  VMemoryStream.Position:=0;
-  VMemoryStream.SetSize(AResultOk.Data.Size);
-  CopyMemory(VMemoryStream.Memory, AResultOk.Data.Buffer, AResultOk.Data.Size);
-  Result:=0;
+  Result := 0;
 
   if (not Assigned(FTileInfoPtr.AddImageProc)) then
     Exit;
 
-  if (nil=VMemoryStream) or (0=VMemoryStream.Size) then
-    Exit;
-
-  // search for:
-  // <option value='dg,4c0512fac553a1d9cf226b003610efad'  selected='selected'  >5/22/2011</option>
-  // <option value='dg,f09a1d6be635f037f9b2a079ea57040b'  >7/19/2010</option>
+  VResponse := nil;
   VSLParams := nil;
-  VResponse := TStringList.Create;
+  VStream := TStreamReadOnlyByBinaryData.Create(AResultOk.Data);
   try
-    VResponse.LoadFromStream(VMemoryStream);
+    if (0 = VStream.Size) then
+      Exit;
 
+    VResponse := TStringList.Create;
+    VResponse.LoadFromStream(VStream);
+    // search for:
+    // <option value='dg,4c0512fac553a1d9cf226b003610efad'  selected='selected'  >5/22/2011</option>
+    // <option value='dg,f09a1d6be635f037f9b2a079ea57040b'  >7/19/2010</option>
     while (VResponse.Count>0) do begin
       S := Trim(VResponse[0]);
       S := GetBetween(S, '<option', '</option>');
@@ -244,8 +248,9 @@ begin
       VResponse.Delete(0);
     end;
   finally
-    FreeAndNil(VResponse);
-    FreeAndNil(VSLParams);
+    VStream.Free;
+    VSLParams.Free;
+    VResponse.Free;
   end;
 end;
 

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ResStrings;
@@ -28,6 +28,7 @@ ResourceString
   SAS_MSG_coution = 'Attention!';
 
   SAS_MSG_DeleteMarkCategoryAsk = 'Are you sure you want to delete category with name "%0:s"?';
+  SAS_MSG_DeleteSubCategoryAsk = 'Selected category "%0:s" contain %d sub categories. Are you realy want to delete all of them?';
   SAS_MSG_DeleteMarkPointAsk = 'Are you sure you want to delete point with name "%0:s"?';
   SAS_MSG_DeleteMarkPathAsk = 'Are you sure you want to delete path with name "%0:s"?';
   SAS_MSG_DeleteMarkPolyAsk = 'Are you sure you want to delete polygon with name "%0:s"?';
@@ -48,6 +49,8 @@ ResourceString
   SAS_MSG_FileBeCreateLen = 'The tile size is equal to the existing one, skipping.';
   SAS_MSG_ProcessFilesComplete = 'The task is completed!';
   SAS_MSG_LoadComplete = 'Download completed';
+  SAS_MSG_NoFlyOnTrackSource = 'No source for Fly-on-Track mode';
+  SAS_MSG_UnknownGPSOrigin = 'GPS origin misconfiguration: unknown mode %d';
   SAS_MSG_NoGPSdetected = 'No GPS receiver found';
   SAS_MSG_GarminMax1Mp = 'The number of JPEG files will exceed 100. If your'#13#10 +
     'navigation device split the image using'#13#10 +
@@ -129,7 +132,7 @@ ResourceString
   SAS_STR_AllDelete = 'Deleted total:';
   SAS_STR_AllSaves = 'Total to save:';
   SAS_STR_Files = 'files';
-  SAS_STR_file = 'file';
+  SAS_STR_File = 'File';
   SAS_STR_No = 'No';
   SAS_STR_Yes = 'Yes';
   SAS_STR_Deleted = 'Deleting:';
@@ -163,11 +166,6 @@ ResourceString
   SAS_STR_LoadProcess = 'Downloading...';
   SAS_STR_LoadProcessRepl = 'Downloading with overwrite...';
   SAS_STR_ProcessedFile = 'Processing tile: %0:s ...';
-  SAS_STR_LoadAttachmentsBegin = 'Downloading attachments...';
-  SAS_STR_LoadAttachmentsEnd_Skipped = 'Skipped';
-  SAS_STR_LoadAttachmentsEnd_Failed = 'Failed';
-  SAS_STR_LoadAttachmentsEnd_Cancelled = 'Cancelled';
-  SAS_STR_LoadAttachmentsEnd_Nothing = 'No attachments';
   SAS_STR_S = 'Area';
   SAS_STR_L = 'Length';
   SAS_STR_P = 'Perimeter';
@@ -256,6 +254,14 @@ ResourceString
   SAS_STR_SensorGPSRecorderUTCTimeCaption = 'UTC time:';
   SAS_STR_SensorGPSRecorderUTCTimeDescription = 'Shows UTC time';
   SAS_STR_SensorGPSRecorderUTCTimeMenuItemName = 'UTC time'; // UTC time
+
+  SAS_STR_SensorGPSRecorderSunRiseTimeCaption = 'Sunraise time:';
+  SAS_STR_SensorGPSRecorderSunRiseTimeDescription = 'Shows Sunraise time for current position';
+  SAS_STR_SensorGPSRecorderSunRiseTimeMenuItemName = 'Sunraise time'; // Sunraise time
+
+  SAS_STR_SensorGPSRecorderSunSetTimeCaption = 'Sunset time:';
+  SAS_STR_SensorGPSRecorderSunSetTimeDescription = 'Shows Sunset time for current position';
+  SAS_STR_SensorGPSRecorderSunSetTimeMenuItemName = 'Sunset time'; // Sunset time
 
   SAS_STR_SensorGPSRecorderLocalTimeCaption = 'Local time:';
   SAS_STR_SensorGPSRecorderLocalTimeDescription = 'Shows local time';

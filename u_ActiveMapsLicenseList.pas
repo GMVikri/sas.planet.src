@@ -6,7 +6,7 @@ uses
   i_Listener,
   i_StringListStatic,
   i_StringListChangeable,
-  i_MapTypes,
+  i_MapTypeSetChangeable,
   i_LanguageManager,
   u_ConfigDataElementBase;
 
@@ -37,6 +37,8 @@ implementation
 uses
   ActiveX,
   Classes,
+  i_MapTypes,
+  i_MapTypeSet,
   u_ListenerByEvent,
   u_StringListStatic;
 
@@ -62,12 +64,12 @@ end;
 
 destructor TActiveMapsLicenseList.Destroy;
 begin
-  if FMapsSet <> nil then begin
+  if Assigned(FMapsSet) and Assigned(FMapsListListener) then begin
     FMapsSet.ChangeNotifier.Remove(FMapsListListener);
     FMapsSet := nil;
     FMapsListListener := nil;
   end;
-  if FLanguageManager <> nil then begin
+  if Assigned(FLanguageManager) and Assigned(FLanguageManagerListener) then begin
     FLanguageManager.ChangeNotifier.Remove(FLanguageManagerListener);
     FLanguageManager := nil;
     FLanguageManagerListener := nil;
@@ -95,7 +97,7 @@ begin
     while VEnum.Next(1, VGUID, VCnt) = S_OK do begin
       VMapType := VMapsSet.GetMapTypeByGUID(VGUID);
       if VMapType <> nil then begin
-        VLicense := VMapType.MapType.Zmp.License.GetString(VLangIndex);
+        VLicense := VMapType.Zmp.License.GetString(VLangIndex);
         if VLicense <> '' then begin
           VStringList.Add(VLicense);
         end;

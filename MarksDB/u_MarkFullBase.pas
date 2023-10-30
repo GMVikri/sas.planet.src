@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MarkFullBase;
@@ -23,38 +23,33 @@ unit u_MarkFullBase;
 interface
 
 uses
-  t_GeoTypes,
-  i_LonLatRect,
+  t_Hash,
   i_HtmlToHintTextConverter,
   i_VectorDataItemSimple,
   i_Category,
-  i_MarksSimple,
   u_BaseInterfacedObject;
 
 type
-  TMarkFullBase = class(TBaseInterfacedObject, IMark,
-    IVectorDataItemSimple, IVectorDataItemWithCategory)
+  TMarkMainInfo = class(TBaseInterfacedObject, IVectorDataItemMainInfo, IVectorDataItemWithCategory)
   private
-    FName: string;
     FHintConverter: IHtmlToHintTextConverter;
+    FHash: THashValue;
+    FName: string;
     FDesc: string;
     FCategory: ICategory;
   protected
-    function GetStringID: string;
+    function GetHash: THashValue;
     function GetName: string;
-    function GetMarkType: TGUID; virtual; abstract;
     function GetDesc: string;
-    function GetLLRect: ILonLatRect; virtual; abstract;
     function GetHintText: string;
     function GetInfoHTML: string;
     function GetInfoUrl: string;
     function GetInfoCaption: string;
-    function GetGoToLonLat: TDoublePoint; virtual; abstract;
-    function IsEqual(const AMark: IMark): Boolean; virtual;
-    function IsSameId(const AMarkId: IMarkId): Boolean;
+    function IsEqual(const AValue: IVectorDataItemMainInfo): Boolean;
     function GetCategory: ICategory;
   public
     constructor Create(
+      const AHash: THashValue;
       const AHintConverter: IHtmlToHintTextConverter;
       const AName: string;
       const ACategory: ICategory;
@@ -64,43 +59,54 @@ type
 
 implementation
 
-{ TMarkFullBase }
+uses
+  SysUtils;
 
-constructor TMarkFullBase.Create(
+{ TMarkMainInfo }
+
+constructor TMarkMainInfo.Create(
+  const AHash: THashValue;
   const AHintConverter: IHtmlToHintTextConverter;
   const AName: string;
   const ACategory: ICategory;
   const ADesc: string
 );
 begin
+  Assert(Assigned(AHintConverter));
   inherited Create;
+  FHash := AHash;
   FName := AName;
   FCategory := ACategory;
   FHintConverter := AHintConverter;
   FDesc := ADesc;
 end;
 
-function TMarkFullBase.GetCategory: ICategory;
+function TMarkMainInfo.GetCategory: ICategory;
 begin
   Result := FCategory;
 end;
 
-function TMarkFullBase.GetDesc: string;
+function TMarkMainInfo.GetDesc: string;
 begin
   Result := FDesc;
 end;
 
-function TMarkFullBase.GetHintText: string;
+function TMarkMainInfo.GetHash: THashValue;
+begin
+  Result := FHash;
+end;
+
+function TMarkMainInfo.GetHintText: string;
 begin
   Result := FHintConverter.Convert(GetName, FDesc);
 end;
 
-function TMarkFullBase.GetInfoCaption: string;
+function TMarkMainInfo.GetInfoCaption: string;
 begin
   Result := GetName;
 end;
 
-function TMarkFullBase.GetInfoHTML: string;
+function TMarkMainInfo.GetInfoHTML: string;
 begin
   Result := '';
   if FDesc <> '' then begin
@@ -110,48 +116,56 @@ begin
   end;
 end;
 
-function TMarkFullBase.GetInfoUrl: string;
+function TMarkMainInfo.GetInfoUrl: string;
 begin
   Result := '';
 end;
 
-function TMarkFullBase.GetName: string;
+function TMarkMainInfo.GetName: string;
 begin
   Result := FName;
 end;
 
-function TMarkFullBase.GetStringID: string;
+function TMarkMainInfo.IsEqual(const AValue: IVectorDataItemMainInfo): Boolean;
+var
+  VVectorDataItemWithCategory: IVectorDataItemWithCategory;
 begin
-  Result := '';
-end;
-
-function TMarkFullBase.IsEqual(const AMark: IMark): Boolean;
-begin
-  Result := True;
-  if FName <> AMark.Name then begin
+  if not Assigned(AValue) then begin
     Result := False;
     Exit;
   end;
-  if FDesc <> AMark.Desc then begin
+  if AValue = IVectorDataItemMainInfo(Self) then begin
+    Result := True;
+    Exit;
+  end;
+  if (AValue.Hash <> 0) and (FHash <> 0) and (AValue.Hash <> FHash) then begin
+    Result := False;
+    Exit;
+  end;
+  if FName <> AValue.Name then begin
+    Result := False;
+    Exit;
+  end;
+  if FDesc <> AValue.Desc then begin
+    Result := False;
+    Exit;
+  end;
+  if not Supports(AValue, IVectorDataItemWithCategory, VVectorDataItemWithCategory) then begin
     Result := False;
     Exit;
   end;
   if FCategory <> nil then begin
-    if not FCategory.IsSame(AMark.Category) then begin
+    if not FCategory.IsSame(VVectorDataItemWithCategory.Category) then begin
       Result := False;
       Exit;
     end;
   end else begin
-    if AMark.Category <> nil then begin
+    if VVectorDataItemWithCategory.Category <> nil then begin
       Result := False;
       Exit;
     end;
   end;
-end;
-
-function TMarkFullBase.IsSameId(const AMarkId: IMarkId): Boolean;
-begin
-  Result := False;
+  Result := True;
 end;
 
 end.

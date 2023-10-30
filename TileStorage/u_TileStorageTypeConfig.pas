@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageTypeConfig;
@@ -35,37 +35,31 @@ type
     function GetBasePath: IPathConfig;
   public
     constructor Create(
-      const ABasePath: IPathConfig;
-      const ADefaultPath: string
+      const APath: IPathConfig
     );
   end;
 
 implementation
 
 uses
-  u_ConfigSaveLoadStrategyBasicUseProvider,
-  u_PathConfig;
+  u_ConfigSaveLoadStrategyBasicUseProvider;
 
 { TTileStorageTypeConfig }
 
 constructor TTileStorageTypeConfig.Create(
-  const ABasePath: IPathConfig;
-  const ADefaultPath: string
+  const APath: IPathConfig
 );
 begin
   inherited Create;
-  FPath := TPathConfig.Create('Path', ADefaultPath, ABasePath);
-  Add(FPath, TConfigSaveLoadStrategyBasicUseProvider.Create);
+  FPath := APath;
+  if Assigned(FPath) then begin
+    Add(FPath, TConfigSaveLoadStrategyBasicUseProvider.Create);
+  end;
 end;
 
 function TTileStorageTypeConfig.GetBasePath: IPathConfig;
 begin
-  LockRead;
-  try
-    Result := FPath;
-  finally
-    UnlockRead;
-  end;
+  Result := FPath;
 end;
 
 end.

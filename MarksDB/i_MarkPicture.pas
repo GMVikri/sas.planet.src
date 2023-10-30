@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_MarkPicture;
@@ -24,9 +24,9 @@ interface
 
 uses
   Classes,
+  t_Hash,
   i_BinaryData,
-  i_BitmapMarker,
-  i_ConfigDataElement;
+  i_BitmapMarker;
 
 type
   IMarkPicture = interface
@@ -40,10 +40,15 @@ type
 
     function GetTextAlignment: TAlignment;
     function GetTextVerticalAlignment: TVerticalAlignment;
+
+    function GetHash: THashValue;
+    property Hash: THashValue read GetHash;
   end;
 
-  IMarkPictureList = interface(IConfigDataElement)
+  IMarkPictureList = interface
     ['{C080A087-C571-4654-8B3E-63D6E6A5542F}']
+    procedure LoadList;
+
     function GetCount: Integer;
     property Count: Integer read GetCount;
 

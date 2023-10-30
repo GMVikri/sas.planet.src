@@ -4,17 +4,24 @@ interface
 
 uses
   TestFramework,
-  i_VectorItemProjected,
-  u_ProjectedSingleLine;
+  i_ProjectedCalc,
+  i_GeometryProjected,
+  u_GeometryProjected;
 
 type
   TestTProjectedPolygonLine = class(TTestCase)
   private
-    FPolygon: IProjectedPolygonLine;
+    FPolygon: IGeometryProjectedSinglePolygon;
+    FCalc: IProjectedCalc;
   protected
     procedure SetUp; override;
   published
-    procedure TestIsRectIntersectPolygonSimple;
+    procedure TestIsRectIntersectPolygonOutsideFull;
+    procedure TestIsRectIntersectPolygonOutsideMBRintersect;
+    procedure TestIsRectIntersectPolygonInside;
+    procedure TestIsRectIntersectPolygonFullInclude;
+    procedure TestIsRectIntersectPolygonIntersectBorder;
+    procedure TestIsRectIntersectPolygonTouch;
   end;
 
 
@@ -22,7 +29,8 @@ implementation
 
 uses
   t_GeoTypes,
-  u_GeoFun;
+  u_ProjectedCalc,
+  u_GeoFunc;
 
 { TestTProjectedPolygonLine }
 
@@ -31,6 +39,7 @@ var
   VPoints: array of TDoublePoint;
 begin
   inherited;
+  FCalc := TProjectedCalc.Create;
   SetLength(VPoints, 12);
   VPoints[0] := DoublePoint(1, 8);
   VPoints[1] := DoublePoint(1, 4);
@@ -46,14 +55,13 @@ begin
   VPoints[11] := DoublePoint(13, 8);
 
   FPolygon :=
-    TProjectedPolygonLine.Create(
-      nil,
+    TGeometryProjectedPolygon.Create(
       Addr(VPoints[0]),
       Length(VPoints)
     );
 end;
 
-procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonSimple;
+procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonOutsideFull;
 var
   VRect: TDoubleRect;
 begin
@@ -66,6 +74,12 @@ begin
   VRect := DoubleRect(2, 100, 3, 101);
   CheckFalse(FPolygon.IsRectIntersectPolygon(VRect));
 
+end;
+
+procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonOutsideMBRintersect;
+var
+  VRect: TDoubleRect;
+begin
   VRect := DoubleRect(1, 1, 2, 2);
   CheckFalse(FPolygon.IsRectIntersectPolygon(VRect));
 
@@ -74,21 +88,46 @@ begin
 
   VRect := DoubleRect(4, 4, 5, 5);
   CheckFalse(FPolygon.IsRectIntersectPolygon(VRect));
+end;
 
+procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonInside;
+var
+  VRect: TDoubleRect;
+begin
   VRect := DoubleRect(2, 4, 5, 6);
   CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
 
   VRect := DoubleRect(11, 4, 12, 5);
   CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
+end;
 
+procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonFullInclude;
+var
+  VRect: TDoubleRect;
+begin
   VRect := DoubleRect(1, 1, 13, 8);
   CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
 
+  VRect := DoubleRect(0, 0, 100, 100);
+  CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
+end;
+
+procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonIntersectBorder;
+var
+  VRect: TDoubleRect;
+begin
   VRect := DoubleRect(2, 2, 3, 3);
   CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
 
+end;
+
+procedure TestTProjectedPolygonLine.TestIsRectIntersectPolygonTouch;
+var
+  VRect: TDoubleRect;
+begin
+  // Прямоугольник касается полигона. Случаи спорные. Можно менять поведение
   VRect := DoubleRect(4, 0, 5, 1);
-  CheckFalse(FPolygon.IsRectIntersectPolygon(VRect));
+  CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
 
   VRect := DoubleRect(4, 6, 5, 7);
   CheckFalse(FPolygon.IsRectIntersectPolygon(VRect));
@@ -100,7 +139,7 @@ begin
   CheckFalse(FPolygon.IsRectIntersectPolygon(VRect));
 
   VRect := DoubleRect(4, 8, 5, 9);
-  FPolygon.IsRectIntersectPolygon(VRect); // Этот сулчай пока игнорим
+  CheckTrue(FPolygon.IsRectIntersectPolygon(VRect));
 end;
 
 initialization

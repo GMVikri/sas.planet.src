@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageInRAM;
@@ -27,12 +27,14 @@ uses
   SysUtils,
   i_BinaryData,
   i_MapVersionInfo,
+  i_MapVersionFactory,
+  i_MapVersionRequest,
   i_ContentTypeInfo,
   i_TileInfoBasic,
   i_BasicMemCache,
   i_CoordConverter,
+  i_TileStorageAbilities,
   i_TileStorage,
-  i_MapVersionConfig,
   i_TileInfoBasicMemCache,
   u_TileStorageAbstract;
 
@@ -43,8 +45,6 @@ type
     FTileNotExistsTileInfo: ITileInfoBasic;
     FTileInfoMemCache: ITileInfoBasicMemCache;
   protected
-    function GetIsFileCache: Boolean; override;
-
     function GetTileFileName(
       const AXY: TPoint;
       const AZoom: Byte;
@@ -58,10 +58,17 @@ type
       const AMode: TGetTileInfoMode
     ): ITileInfoBasic; override;
 
+    function GetTileInfoEx(
+      const AXY: TPoint;
+      const AZoom: Byte;
+      const AVersionInfo: IMapVersionRequest;
+      const AMode: TGetTileInfoMode
+    ): ITileInfoBasic; override;
+
     function GetTileRectInfo(
       const ARect: TRect;
       const AZoom: Byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): ITileRectInfo; override;
 
     function DeleteTile(
@@ -70,27 +77,23 @@ type
       const AVersionInfo: IMapVersionInfo
     ): Boolean; override;
 
-    procedure SaveTile(
+    function SaveTile(
       const AXY: TPoint;
       const AZoom: Byte;
       const AVersionInfo: IMapVersionInfo;
       const ALoadDate: TDateTime;
       const AContentType: IContentTypeInfoBasic;
-      const AData: IBinaryData
-    ); override;
-
-    procedure SaveTNE(
-      const AXY: TPoint;
-      const AZoom: Byte;
-      const AVersionInfo: IMapVersionInfo;
-      const ALoadDate: TDateTime
-    ); override;
+      const AData: IBinaryData;
+      const AIsOverwrite: Boolean
+    ): Boolean; override;
   private
     { IBasicMemCache }
     procedure ClearMemCache;
     procedure IBasicMemCache.Clear = ClearMemCache;
   public
     constructor Create(
+      const AStorageTypeAbilities: ITileStorageTypeAbilities;
+      const AStorageForceAbilities: ITileStorageAbilities;
       const ATileInfoMemCache: ITileInfoBasicMemCache;
       const AGeoConverter: ICoordConverter;
       const AMapVersionFactory: IMapVersionFactory;
@@ -103,10 +106,9 @@ implementation
 
 uses
   t_CommonTypes,
-  i_TileIterator,   
+  i_TileIterator,
   u_TileRectInfoShort,
   u_TileIteratorByRect,
-  u_TileStorageTypeAbilities,
   u_TileInfoBasic;
 
 type
@@ -119,6 +121,8 @@ resourcestring
 { TTileStorageInRAM }
 
 constructor TTileStorageInRAM.Create(
+  const AStorageTypeAbilities: ITileStorageTypeAbilities;
+  const AStorageForceAbilities: ITileStorageAbilities;
   const ATileInfoMemCache: ITileInfoBasicMemCache;
   const AGeoConverter: ICoordConverter;
   const AMapVersionFactory: IMapVersionFactory;
@@ -130,7 +134,8 @@ begin
   end;
 
   inherited Create(
-    TTileStorageTypeAbilitiesRAM.Create,
+    AStorageTypeAbilities,
+    AStorageForceAbilities,
     AMapVersionFactory,
     AGeoConverter,
     ''
@@ -146,12 +151,7 @@ begin
   FTileInfoMemCache := nil;
   FMainContentType := nil;
   FTileNotExistsTileInfo := nil;
-  inherited Destroy;
-end;
-
-function TTileStorageInRAM.GetIsFileCache: Boolean;
-begin
-  Result := False;
+  inherited;
 end;
 
 function TTileStorageInRAM.GetTileFileName(
@@ -177,10 +177,27 @@ begin
   end;
 end;
 
+function TTileStorageInRAM.GetTileInfoEx(const AXY: TPoint; const AZoom: Byte;
+  const AVersionInfo: IMapVersionRequest;
+  const AMode: TGetTileInfoMode): ITileInfoBasic;
+var
+  VVersionInfo: IMapVersionInfo;
+begin
+  VVersionInfo := nil;
+  if Assigned(AVersionInfo) then begin
+    VVersionInfo := AVersionInfo.BaseVersion;
+  end;
+  Result := FTileInfoMemCache.Get(AXY, AZoom, VVersionInfo, AMode, False);
+  if Result = nil then begin
+    Result := FTileNotExistsTileInfo;
+    FTileInfoMemCache.Add(AXY, AZoom, VVersionInfo, FTileNotExistsTileInfo);
+  end;
+end;
+
 function TTileStorageInRAM.GetTileRectInfo(
   const ARect: TRect;
   const AZoom: Byte;
-  const AVersionInfo: IMapVersionInfo
+  const AVersionInfo: IMapVersionRequest
 ): ITileRectInfo;
 var
   VRect: TRect;
@@ -206,7 +223,7 @@ begin
         VIndex := TTileRectInfoShort.TileInRectToIndex(VTile, VRect);
         Assert(VIndex >=0);
         if VIndex >= 0 then begin
-          VTileInfo := GetTileInfo(VTile, VZoom, AVersionInfo, gtimWithoutData);
+          VTileInfo := GetTileInfoEx(VTile, VZoom, AVersionInfo, gtimWithoutData);
           if VTileInfo.IsExists then begin
             // tile exists
             VItems[VIndex].FLoadDate := VTileInfo.LoadDate;
@@ -244,47 +261,42 @@ begin
   end;
 end;
 
-procedure TTileStorageInRAM.SaveTile(
+function TTileStorageInRAM.SaveTile(
   const AXY: TPoint;
   const AZoom: Byte;
   const AVersionInfo: IMapVersionInfo;
   const ALoadDate: TDateTime;
   const AContentType: IContentTypeInfoBasic;
-  const AData: IBinaryData
-);
+  const AData: IBinaryData;
+  const AIsOverwrite: Boolean
+): Boolean;
 var
   VTileInfo: ITileInfoBasic;
 begin
+  Result := False;
   if GetState.GetStatic.WriteAccess <> asDisabled then begin
-    if not FMainContentType.CheckOtherForSaveCompatible(AContentType) then begin
-      raise ETileStorageInRAM.Create('Bad content type for this tile storage');
+    if not AIsOverwrite then begin
+      VTileInfo := FTileInfoMemCache.Get(AXY, AZoom, AVersionInfo, gtimAsIs, False);
+      if Assigned(VTileInfo) and (VTileInfo.IsExists or VTileInfo.IsExistsTNE) then begin
+        Exit;
+      end;
     end;
-    VTileInfo :=
-      TTileInfoBasicExistsWithTile.Create(
-        ALoadDate,
-        AData,
-        AVersionInfo,
-        FMainContentType
-      );
-    FTileInfoMemCache.Add(AXY, AZoom, AVersionInfo, VTileInfo);
-    NotifyTileUpdate(AXY, AZoom, AVersionInfo);
-  end;
-end;
 
-procedure TTileStorageInRAM.SaveTNE(
-  const AXY: TPoint;
-  const AZoom: Byte;
-  const AVersionInfo: IMapVersionInfo;
-  const ALoadDate: TDateTime
-);
-begin
-  if GetState.GetStatic.WriteAccess <> asDisabled then begin
-    FTileInfoMemCache.Add(
-      AXY,
-      AZoom,
-      AVersionInfo,
-      TTileInfoBasicTNE.Create(ALoadDate, AVersionInfo)
-    );
+    if Assigned(AContentType) and Assigned(AData) then begin
+      if not FMainContentType.CheckOtherForSaveCompatible(AContentType) then begin
+        raise ETileStorageInRAM.Create('Bad content type for this tile storage');
+      end;
+      VTileInfo :=
+        TTileInfoBasicExistsWithTile.Create(
+          ALoadDate,
+          AData,
+          AVersionInfo,
+          FMainContentType
+        );
+    end else begin
+      VTileInfo := TTileInfoBasicTNE.Create(ALoadDate, AVersionInfo);
+    end;
+    FTileInfoMemCache.Add(AXY, AZoom, AVersionInfo, VTileInfo);
     NotifyTileUpdate(AXY, AZoom, AVersionInfo);
   end;
 end;

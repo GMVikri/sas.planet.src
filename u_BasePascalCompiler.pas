@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BasePascalCompiler;
@@ -87,13 +87,13 @@ implementation
 
 uses
   Math,
-  ALfcnString,
+  ALString,
   RegExprUtils,
   i_SimpleHttpDownloader,
   i_ProjConverter,
   i_CoordConverter,
   u_ResStrings,
-  u_GeoToStr,
+  u_GeoToStrFunc,
   u_TileRequestBuilderHelpers;
 
 function CommonAppScriptOnUses(
@@ -176,12 +176,15 @@ begin
   if ALSameText(AName, 'SYSTEM') then begin
     // numeric routines
     Sender.AddDelphiFunction('function Random(const X: Integer): Integer');
-    Sender.AddDelphiFunction('function RoundEx(chislo: Double; Precision: Integer): String');
+    Sender.AddDelphiFunction('function RoundEx(const chislo: Double; const Precision: Integer): String');
+    Sender.AddDelphiFunction('function Power(const Base, Exponent: Extended): Extended');
     Sender.AddDelphiFunction('function IntPower(const Base: Extended; const Exponent: Integer): Extended register');
     Sender.AddDelphiFunction('function IntToHex(Value: Integer; Digits: Integer): String');
     Sender.AddDelphiFunction('function Ceil(const X: Extended): Integer;');
     Sender.AddDelphiFunction('function Floor(const X: Extended): Integer;');
     Sender.AddDelphiFunction('function Log2(const X: Extended): Extended;');
+    Sender.AddDelphiFunction('function Ln(const X: Extended): Extended;');
+    Sender.AddDelphiFunction('function Sqrt(const X: Extended): Extended;');
     Sender.AddDelphiFunction('function Max(const A, B: Integer): Integer;');
     Sender.AddDelphiFunction('function MaxExt(const A, B: Extended): Extended;');
     Sender.AddDelphiFunction('function Min(const A, B: Integer): Integer;');
@@ -204,6 +207,11 @@ begin
     Sender.AddDelphiFunction('function GetHeaderValue(AHeaders, AName: AnsiString): AnsiString');
     Sender.AddDelphiFunction('function SaveToLocalFile(const AFullLocalFilename, AData: AnsiString): Integer');
     Sender.AddDelphiFunction('function FileExists(const FileName: AnsiString): Boolean');
+
+    // Base64 routines
+    Sender.AddDelphiFunction('function Base64Encode(const Data: AnsiString): AnsiString');
+    Sender.AddDelphiFunction('function Base64UrlEncode(const Data: AnsiString): AnsiString');
+    Sender.AddDelphiFunction('function Base64Decode(const Data: AnsiString): AnsiString');
 
     Result := True;
   end else begin
@@ -248,12 +256,15 @@ begin
 
   // numeric routines
   Self.RegisterDelphiFunction(@RoundEx, 'RoundEx', cdRegister);
+  Self.RegisterDelphiFunction(@Power, 'Power', cdRegister);
   Self.RegisterDelphiFunction(@IntPower, 'IntPower', cdRegister);
   Self.RegisterDelphiFunction(@RandomInt, 'Random', cdRegister);
   Self.RegisterDelphiFunction(@IntToHex, 'IntToHex', cdRegister);
   Self.RegisterDelphiFunction(@Ceil, 'Ceil', cdRegister);
   Self.RegisterDelphiFunction(@Floor, 'Floor', cdRegister);
   Self.RegisterDelphiFunction(@Log2, 'Log2', cdRegister);
+  Self.RegisterDelphiFunction(@Ln, 'Ln', cdRegister);
+  Self.RegisterDelphiFunction(@Sqrt, 'Sqrt', cdRegister);
   Self.RegisterDelphiFunction(@MaxInt, 'Max', cdRegister);
   Self.RegisterDelphiFunction(@MaxExt, 'MaxExt', cdRegister);
   Self.RegisterDelphiFunction(@MinInt, 'Min', cdRegister);
@@ -276,6 +287,11 @@ begin
   Self.RegisterDelphiFunction(@GetDiv3Path, 'GetDiv3Path', cdRegister);
   Self.RegisterDelphiFunction(@SaveToLocalFile, 'SaveToLocalFile', cdRegister);
   Self.RegisterDelphiFunction(@FileExists, 'FileExists', cdRegister);
+
+  // Base64 routines
+  Self.RegisterDelphiFunction(@Base64EncodeStr, 'Base64Encode', cdRegister);
+  Self.RegisterDelphiFunction(@Base64UrlEncodeStr, 'Base64UrlEncode', cdRegister);
+  Self.RegisterDelphiFunction(@Base64DecodeStr, 'Base64Decode', cdRegister);
 end;
 
 { TBaseFactoryPascalScript }

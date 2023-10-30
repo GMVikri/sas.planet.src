@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.�������)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GeoCoderByNavitel;
@@ -24,6 +24,7 @@ interface
 
 uses
   Classes,
+  i_InterfaceListSimple,
   i_NotifierOperation,
   i_LocalCoordConverter,
   i_DownloadRequest,
@@ -43,7 +44,7 @@ type
       const AResult: IDownloadResultOk;
       const ASearch: WideString;
       const ALocalConverter: ILocalCoordConverter
-    ): IInterfaceList; override;
+    ): IInterfaceListSimple; override;
   public
   end;
 
@@ -51,20 +52,21 @@ implementation
 
 uses
   SysUtils,
-  StrUtils,
+  ALString,
   RegExprUtils,
   t_GeoTypes,
   i_GeoCoder,
+  i_VectorDataItemSimple,
   i_CoordConverter,
+  u_InterfaceListSimple,
   u_ResStrings,
-  u_GeoCodePlacemark,
-  u_GeoTostr;
+  u_GeoToStrFunc;
 
 { TGeoCoderByNavitel }
 
-function NavitelType(t : integer) : string;
+function NavitelType(VType: integer): string;
 begin
-case t of
+case VType of
   1: Result := '';
   2: Result := '��. ';
   3: Result := '������ ';
@@ -481,7 +483,7 @@ case t of
   425: Result := '������ ';
   426: Result := '���������� '
   else  Result := '';
- end;
+  end;
 end;
 
 function TGeoCoderByNavitel.ParseResultToPlacemarksList(
@@ -490,26 +492,29 @@ function TGeoCoderByNavitel.ParseResultToPlacemarksList(
   const AResult: IDownloadResultOk;
   const ASearch: WideString;
   const ALocalConverter: ILocalCoordConverter
-): IInterfaceList;
+): IInterfaceListSimple;
 var
-  slat, slon, sname, sdesc, sfulldesc, Navitel_id, Navitel_type, place_id: string;
-  i, j , ii , jj : integer;
+  VLatStr, VLonStr: AnsiString;
+  VSName, VFullDesc: string;
+  VDescStr: AnsiString;
+  VNavitel_ID, VNavitel_Type, VPlace_Id: AnsiString;
+  i, j, Vii, Vjj: integer;
   VPoint: TDoublePoint;
-  VPlace: IGeoCodePlacemark;
-  VList: IInterfaceList;
-  VFormatSettings: TFormatSettings;
-
+  VPlace: IVectorDataItem;
+  VList: IInterfaceListSimple;
+  VFormatSettings: TALFormatSettings;
   vCurPos: integer;
-  vCurChar: string;
+  vCurChar: AnsiString;
   vBrLevel: integer;
-  VBuffer: string;
-  VStr: string;
+  VBuffer: AnsiString;
+  VStr: AnsiString;
+  VDesc: string;
   VRequest: IDownloadRequest;
   VResult: IDownloadResult;
   VResultOk: IDownloadResultOk;
 begin
-  sfulldesc:='';
-  sdesc:='';
+  VFullDesc := '';
+  VDescStr := '';
   vBrLevel := 1;
   if AResult.Data.Size <= 0 then begin
     raise EParserError.Create(SAS_ERR_EmptyServerResponse);
@@ -518,102 +523,100 @@ begin
   SetLength(Vstr, AResult.Data.Size);
   Move(AResult.Data.Buffer^, Vstr[1], AResult.Data.Size);
 
-  VStr := ReplaceStr(VStr,#$0A,'');
+  VStr := ALStringReplace(VStr, #$0A, '', [rfReplaceAll]);
   VFormatSettings.DecimalSeparator := '.';
-  VList := TInterfaceList.Create;
+  VList := TInterfaceListSimple.Create;
 
-  vCurPos:=1;
+  vCurPos := 1;
   while (vCurPos<length(VStr)) do begin
-   inc (vCurPos);
-   vCurChar:=copy(VStr,vCurPos,1);
-   VBuffer:=VBuffer+vCurChar;
+    inc (vCurPos);
+    vCurChar := copy(VStr, vCurPos, 1);
+    VBuffer := VBuffer + vCurChar;
+    if vCurChar='[' then Inc(vBrLevel);
+    if vCurChar=']' then begin
+      dec(vBrLevel);
+      if vBrLevel=1 then  begin
+        //[848692, ["Москва"], 72, 857666, null],
+        //[817088, ["Новая Москва"], 32, null, ["Шкотовский р-н", "Приморский край", "Россия"]],
+        VDescStr := '';
+        VSName := '';
+        VFullDesc := '';
+        i := ALPosEx('[', VBuffer, 1);
+        j := ALPosEx(',', VBuffer, 1);
+        VNavitel_ID := Copy(VBuffer, i + 1, j - (i + 1));
+        j := 1;
+        i := ALPosEx('[', VBuffer, 1);
+        if i>0  then begin
+          j := ALPosEx(',', VBuffer, i + 1);
+          VRequest :=
+            PrepareRequestByURL(
+              'http://maps.navitel.su/webmaps/searchTwoStepInfo?id=' + (Copy(VBuffer, i + 1, j - (i + 1)))
+            );
+          VResult := Downloader.DoRequest(VRequest, ACancelNotifier, AOperationID);
+          if Supports(VResult, IDownloadResultOk, VResultOk) then begin
+            SetLength(VDescStr, VResultOk.Data.Size);
+            Move(VResultOk.Data.Buffer^, VDescStr[1], VResultOk.Data.Size);
+            Vii := 1;
+            Vjj := ALPosEx(',', VDescStr, Vii + 1 );
+            VLonStr := Copy(VDescStr, Vii + 1, Vjj - (Vii + 1));
+            Vii := Vjj;
+            Vjj := ALPosEx(',', VDescStr, Vii + 1 );
+            VLatStr := Copy(VDescStr, Vii + 1, Vjj - (Vii + 1));
+            VFullDesc := '';
+          end else begin
+            Exit;
+          end;
+        end;
+        i:= j + 1;
+        j := ALPosEx(']', VBuffer, i);
+        VSName := Utf8ToAnsi(Copy(VBuffer, i + 3, j - (i + 4)));
+        j := ALPosEx(',', VBuffer, j + 1);
+        i := j + 1;
+        j := ALPosEx(',', VBuffer, j + 1);
+        VNavitel_Type := Copy(VBuffer, i + 1, j - (i + 1));
+        VSName := NavitelType(ALStrToInt(VNavitel_Type )) + VSName;
+        i := j + 1;
+        j := ALPosEx(',', VBuffer, i + 1);
+        VPlace_Id := Copy(VBuffer, i + 1, j - (i + 1));
+        if VPlace_Id <> 'null' then begin
+          VRequest := PrepareRequestByURL('http://maps.navitel.su/webmaps/searchById?id=' + (VPlace_Id));
+          VResult := Downloader.DoRequest(VRequest, ACancelNotifier, AOperationID);
+          //http://maps.navitel.su/webmaps/searchById?id=812207
+          if Supports(VResult, IDownloadResultOk, VResultOk) then begin
+            SetLength(VDescStr, VResultOk.Data.Size);
+            Move(VResultOk.Data.Buffer^, VDescStr[1], VResultOk.Data.Size);
+            VDescStr := RegExprReplaceMatchSubStr(VDescStr, '[0-9]','');
+            VDescStr := ALStringReplace(VDescStr, #$0A, '', [rfReplaceAll]);
+            VDescStr := ALStringReplace(VDescStr, #$0D, '', [rfReplaceAll]);
+            VDescStr := ALStringReplace(VDescStr, '[', '', [rfReplaceAll]);
+            VDescStr := ALStringReplace(VDescStr, ']', '', [rfReplaceAll]);
+            VDescStr := ALStringReplace(VDescStr, 'null', '', [rfReplaceAll]);
+            VDescStr := ALStringReplace(VDescStr, ', ', '', [rfReplaceAll]);
+            VDescStr := ALStringReplace(VDescStr, '""', '","', [rfReplaceAll]);
+            VDesc := Utf8ToAnsi(VDescStr);
+          end else begin
+            Exit;
+          end;
+        end else begin
+           i := ALPosEx('[', VBuffer, j + 1);
+           if i > j + 1 then begin
+             j := ALPosEx(']', VBuffer, i);
+             VDesc := Utf8ToAnsi(Copy(VBuffer, i + 1, j - (i + 1)));
+          end;
+        end;
 
-   if vCurChar='[' then inc(vBrLevel);
-   if vCurChar=']' then begin
-    dec(vBrLevel);
-    if vBrLevel=1 then  begin
-    //[848692, ["Москва"], 72, 857666, null],
-    //[817088, ["Новая Москва"], 32, null, ["Шкотовский р-н", "Приморский край", "Россия"]],
-     sdesc:='';
-     sname:='';
-     sfulldesc:='';
-     i := PosEx('[', VBuffer, 1);
-     j := PosEx(',', VBuffer, 1);
-     navitel_id := Copy(VBuffer, i + 1, j - (i + 1));
+        try
+          VPoint.Y := ALStrToFloat(VLatStr, VFormatSettings);
+          VPoint.X := ALStrToFloat(VLonStr, VFormatSettings);
+        except
+          raise EParserError.CreateFmt(SAS_ERR_CoordParseError, [VLatStr, VLonStr]);
+        end;
+        VPlace := PlacemarkFactory.Build(VPoint, VSName, VDesc, VFullDesc, 4);
+        VList.Add(VPlace);
 
-     j:=1;
-     i := PosEx('[', VBuffer, 1);
-     if i>0  then begin
-       j := PosEx(',', VBuffer, i + 1);
-       VRequest :=
-        PrepareRequestByURL(
-          'http://maps.navitel.su/webmaps/searchTwoStepInfo?id='+(Copy(VBuffer, i + 1, j - (i + 1)))
-        );
-       VResult := Downloader.DoRequest(VRequest, ACancelNotifier, AOperationID);
-      if Supports(VResult, IDownloadResultOk, VResultOk) then begin
-        SetLength(sdesc, VResultOk.Data.Size);
-        Move(VResultOk.Data.Buffer^, sdesc[1], VResultOk.Data.Size);
-        ii := 1;
-       jj := PosEx(',', sdesc, ii + 1 );
-       slon := Copy(sdesc, ii + 1, jj - (ii + 1));
-       ii := jj;
-       jj := PosEx(',', sdesc, ii + 1 );
-       slat := Copy(sdesc, ii + 1, jj - (ii + 1));
-       sfulldesc :='';
-      end else begin
-        Exit;
+        VBuffer := '';
       end;
-     end;
-     i:=j+1;
-     j := PosEx(']', VBuffer, i);
-     sname := Utf8ToAnsi(Copy(VBuffer, i + 3, j - (i + 4)));
-     j := PosEx(',', VBuffer, j+1);
-     i := j+1;
-     j := PosEx(',', VBuffer, j+1);
-     Navitel_type := Copy(VBuffer, i + 1, j - (i + 1));
-     Sname := NavitelType(StrToInt(Navitel_type )) + sname;
-     i := j+1;
-     j := PosEx(',', VBuffer, i+1);
-     place_id := Copy(VBuffer, i + 1, j - (i + 1));
-     if place_id<>'null' then begin
-      VRequest := PrepareRequestByURL('http://maps.navitel.su/webmaps/searchById?id='+(place_id));
-      VResult := Downloader.DoRequest(VRequest, ACancelNotifier, AOperationID);
-      //http://maps.navitel.su/webmaps/searchById?id=812207
-      if Supports(VResult, IDownloadResultOk, VResultOk) then begin
-        SetLength(sdesc, VResultOk.Data.Size);
-        Move(VResultOk.Data.Buffer^, sdesc[1], VResultOk.Data.Size);
-        sdesc := RegExprReplaceMatchSubStr(sdesc,'[0-9]','');
-        sdesc := ReplaceStr(sdesc,#$0A,'');
-        sdesc := ReplaceStr(sdesc,#$0D,'');
-        sdesc := ReplaceStr(sdesc,'[','');
-        sdesc := ReplaceStr(sdesc,']','');
-        sdesc := ReplaceStr(sdesc,'null','');
-        sdesc := ReplaceStr(sdesc,', ','');
-        sdesc := ReplaceStr(sdesc,'""','","');
-        sdesc := Utf8ToAnsi(sdesc);
-      end else begin
-        Exit;
-      end;
-     end else begin
-       i := PosEx('[', VBuffer, j+1);
-       if i>j+1 then begin
-        j := PosEx(']', VBuffer, i);
-        sdesc := Utf8ToAnsi(Copy(VBuffer, i + 1, j - (i + 1)));
-       end;
-     end;
-
-     try
-       VPoint.Y := StrToFloat(slat, VFormatSettings);
-       VPoint.X := StrToFloat(slon, VFormatSettings);
-     except
-       raise EParserError.CreateFmt(SAS_ERR_CoordParseError, [slat, slon]);
-     end;
-     VPlace := TGeoCodePlacemark.Create(VPoint, sname, sdesc, sfulldesc, 4);
-     VList.Add(VPlace);
-
-    VBuffer:='';
     end;
-   end;
   end;
 
   Result := VList;
@@ -632,7 +635,7 @@ var
 begin
 
   VSearch := ASearch;
-  VConverter:=ALocalConverter.GetGeoConverter;
+  VConverter := ALocalConverter.GetGeoConverter;
   VZoom := ALocalConverter.GetZoom;
   VMapRect := ALocalConverter.GetRectInMapPixelFloat;
   VConverter.CheckPixelRectFloat(VMapRect, VZoom);
@@ -643,13 +646,10 @@ begin
 
   //http://maps.navitel.su/webmaps/searchTwoStep?s=%D0%BC%D0%BE%D1%81%D0%BA%D0%B2%D0%B0&lon=37.6&lat=55.8&z=6
   //http://maps.navitel.su/webmaps/searchTwoStepInfo?id=848692
-  Result :=
-    PrepareRequestByURL(
-      'http://maps.navitel.su/webmaps/searchTwoStep?s='+URLEncode(AnsiToUtf8(VSearch))+
-      '&lon='+R2StrPoint(ALocalConverter.GetCenterLonLat.x)+'&lat='+R2StrPoint(ALocalConverter.GetCenterLonLat.y)+
-      '&z='+inttostr(VZoom)
-    );
+  Result := PrepareRequestByURL(
+   'http://maps.navitel.su/webmaps/searchTwoStep?s=' + URLEncode(AnsiToUtf8(VSearch)) +
+   '&lon=' + R2AnsiStrPoint(ALocalConverter.GetCenterLonLat.x) + '&lat=' + R2AnsiStrPoint(ALocalConverter.GetCenterLonLat.y) +
+   '&z=' + ALIntToStr(VZoom));
 end;
-
 end.
 

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_ZmpInfo;
@@ -32,7 +32,6 @@ uses
   i_TilePostDownloadCropConfig,
   i_SimpleTileStorageConfig,
   i_MapAbilitiesConfig,
-  i_MapAttachmentsInfo,
   i_BinaryDataListStatic,
   i_StringByLanguage,
   i_MapVersionInfo,
@@ -73,6 +72,9 @@ type
     ['{4AD18200-DD3B-42E4-AC57-44C12634C0EB}']
     function GetGUID: TGUID;
     property GUID: TGUID read GetGUID;
+
+    function GetIsLayer: Boolean;
+    property IsLayer: Boolean read GetIsLayer;
 
     function GetFileName: string;
     property FileName: string read GetFileName;
@@ -121,9 +123,6 @@ type
 
     function GetDataProvider: IConfigDataProvider;
     property DataProvider: IConfigDataProvider read GetDataProvider;
-
-    function GetMapAttachmentsInfo: IMapAttachmentsInfo;
-    property MapAttachmentsInfo: IMapAttachmentsInfo read GetMapAttachmentsInfo;
   end;
 
 implementation

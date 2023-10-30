@@ -3,7 +3,7 @@ unit i_VectorItemDrawConfig;
 interface
 
 uses
-  GR32,
+  t_Bitmap32,
   i_ConfigDataElement;
 
 type
@@ -11,9 +11,6 @@ type
     ['{8896BCE3-39C2-4481-B61C-197EAB16E3E9}']
     function GetMainColor: TColor32;
     property MainColor: TColor32 read GetMainColor;
-
-    function GetPointColor: TColor32;
-    property PointColor: TColor32 read GetPointColor;
 
     function GetShadowColor: TColor32;
     property ShadowColor: TColor32 read GetShadowColor;
@@ -24,10 +21,6 @@ type
     function GetMainColor: TColor32;
     procedure SetMainColor(AValue: TColor32);
     property MainColor: TColor32 read GetMainColor write SetMainColor;
-
-    function GetPointColor: TColor32;
-    procedure SetPointColor(AValue: TColor32);
-    property PointColor: TColor32 read GetPointColor write SetPointColor;
 
     function GetShadowColor: TColor32;
     procedure SetShadowColor(AValue: TColor32);

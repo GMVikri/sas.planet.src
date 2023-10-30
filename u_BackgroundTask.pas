@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BackgroundTask;
@@ -59,7 +59,7 @@ type
       const AAppClosingNotifier: INotifierOneOperation;
       AOnExecute: TBackgroundTaskExecuteEvent;
       const AThreadConfig: IThreadConfig;
-      const AThreadDebugName: AnsiString
+      const AThreadDebugName: string
     );
     destructor Destroy; override;
   end;
@@ -69,6 +69,7 @@ implementation
 uses
   u_Notifier,
   u_NotifierOperation,
+  u_Synchronizer,
   u_ListenerByEvent;
 
 { TBackgroundTask }
@@ -77,18 +78,25 @@ constructor TBackgroundTask.Create(
   const AAppClosingNotifier: INotifierOneOperation;
   AOnExecute: TBackgroundTaskExecuteEvent;
   const AThreadConfig: IThreadConfig;
-  const AThreadDebugName: AnsiString
+  const AThreadDebugName: string
 );
 var
   VOperationNotifier: TNotifierOperation;
 begin
-  inherited Create(AThreadConfig, AThreadDebugName);
+  inherited Create(
+    GSync.SyncVariable.Make(Self.ClassName + 'Thread'),
+    AThreadConfig,
+    AThreadDebugName
+  );
   FOnExecute := AOnExecute;
   FAppClosingNotifier := AAppClosingNotifier;
   Assert(Assigned(FOnExecute));
   FStopThreadHandle := CreateEvent(nil, TRUE, FALSE, nil);
   FAllowExecuteHandle := CreateEvent(nil, TRUE, FALSE, nil);
-  VOperationNotifier := TNotifierOperation.Create(TNotifierBase.Create);
+  VOperationNotifier :=
+    TNotifierOperation.Create(
+      TNotifierBase.Create(GSync.SyncVariable.Make(Self.ClassName + 'Notifier'))
+    );
   FCancelNotifierInternal := VOperationNotifier;
   FCancelNotifier := VOperationNotifier;
 
@@ -101,9 +109,11 @@ end;
 
 destructor TBackgroundTask.Destroy;
 begin
-  FAppClosingNotifier.Remove(FAppClosingListener);
-  FAppClosingListener := nil;
-  FAppClosingNotifier := nil;
+  if Assigned(FAppClosingNotifier) and Assigned(FAppClosingListener) then begin
+    FAppClosingNotifier.Remove(FAppClosingListener);
+    FAppClosingListener := nil;
+    FAppClosingNotifier := nil;
+  end;
 
   Terminate;
   CloseHandle(FStopThreadHandle);

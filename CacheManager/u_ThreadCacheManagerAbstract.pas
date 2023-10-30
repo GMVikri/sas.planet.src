@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ThreadCacheManagerAbstract;
@@ -34,10 +34,14 @@ type
     FCancelListener: IListener;
     FMessageForShow: string;
     FCancelNotifier: INotifierOperation;
-    FDebugThreadName: AnsiString;
+    FDebugThreadName: string;
     procedure OnCancel;
     procedure SynShowMessage;
+    {$HINTS OFF}
+    // Disable hint: "Private symbol 'ShowMessageSync' declared but never used"
+    // in case we catch exceptions by EurekaLog (see below)
     procedure ShowMessageSync(const AMessage: string);
+    {$HINTS ON}
   protected
     procedure Process; virtual; abstract;
     procedure Execute; override;
@@ -46,7 +50,7 @@ type
     constructor Create(
       const ACancelNotifier: INotifierOperation;
       const AOperationID: Integer;
-      const ADebugThreadName: AnsiString = ''
+      const ADebugThreadName: string = ''
     );
     destructor Destroy; override;
   end;
@@ -54,6 +58,9 @@ type
 implementation
 
 uses
+  {$IFDEF EUREKALOG}
+  ExceptionLog,
+  {$ENDIF}
   Dialogs,
   SysUtils,
   u_ReadableThreadNames,
@@ -64,7 +71,7 @@ uses
 constructor TThreadCacheManagerAbstract.Create(
   const ACancelNotifier: INotifierOperation;
   const AOperationID: Integer;
-  const ADebugThreadName: AnsiString = ''
+  const ADebugThreadName: string = ''
 );
 begin
   inherited Create(True);
@@ -86,7 +93,7 @@ end;
 
 destructor TThreadCacheManagerAbstract.Destroy;
 begin
-  if (FCancelListener <> nil) and (FCancelNotifier <> nil) then begin
+  if Assigned(FCancelNotifier) and Assigned(FCancelListener) then begin
     FCancelNotifier.RemoveListener(FCancelListener);
     FCancelListener := nil;
     FCancelNotifier := nil;
@@ -100,9 +107,13 @@ begin
   try
     Process;
   except
+  {$IFDEF EUREKALOG}
+    ShowLastExceptionData;
+  {$ELSE}
     on E: Exception do begin
-      ShowMessageSync(E.Message);
+      ShowMessageSync(E.ClassName + ': ' + E.Message);
     end;
+  {$ENDIF}
   end;
 end;
 

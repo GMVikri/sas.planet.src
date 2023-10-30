@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit i_GlobalConfig;
 
 interface
@@ -5,17 +25,17 @@ interface
 uses
   i_PathConfig,
   i_GlobalAppConfig,
-  i_LastSelectionInfo,
   i_LanguageManager,
   i_GSMGeoCodeConfig,
   i_InetConfig,
   i_BitmapPostProcessingConfig,
-  i_ValueToStringConverter,
+  i_ValueToStringConverterConfig,
   i_ImageResamplerConfig,
   i_MainMemCacheConfig,
   i_GPSConfig,
+  i_InternalDebugConfig,
   i_GlobalViewMainConfig,
-  i_MarksFactoryConfig,
+  i_MarkFactoryConfig,
   i_MarkCategoryFactoryConfig,
   i_GlobalDownloadConfig,
   i_ThreadConfig,
@@ -23,7 +43,6 @@ uses
   i_WindowPositionConfig,
   i_TerrainConfig,
   i_ZmpConfig,
-  i_LastSearchResultConfig,
   i_MapSvcScanConfig,
   i_ConfigDataElement;
 
@@ -51,6 +70,9 @@ type
     function GetTerrainDataPath: IPathConfig;
     property TerrainDataPath: IPathConfig read GetTerrainDataPath;
 
+    function GetUpdatesPath: IPathConfig;
+    property UpdatesPath: IPathConfig read GetUpdatesPath;
+
     function GetLastSelectionFileName: IPathConfig;
     property LastSelectionFileName: IPathConfig read GetLastSelectionFileName;
 
@@ -60,11 +82,11 @@ type
     function GetGpsTrackRecorderFileName: IPathConfig;
     property GpsTrackRecorderFileName: IPathConfig read GetGpsTrackRecorderFileName;
 
+    function GetInternalDebugConfig: IInternalDebugConfig;
+    property InternalDebugConfig: IInternalDebugConfig read GetInternalDebugConfig;
+
     function GetGlobalAppConfig: IGlobalAppConfig;
     property GlobalAppConfig: IGlobalAppConfig read GetGlobalAppConfig;
-
-    function GetLastSelectionInfo: ILastSelectionInfo;
-    property LastSelectionInfo: ILastSelectionInfo read GetLastSelectionInfo;
 
     function GetLanguageManager: ILanguageManager;
     property LanguageManager: ILanguageManager read GetLanguageManager;
@@ -111,8 +133,8 @@ type
     function GetGPSConfig: IGpsConfig;
     property GPSConfig: IGPSConfig read GetGpsConfig;
 
-    function GetMarksFactoryConfig: IMarksFactoryConfig;
-    property MarksFactoryConfig: IMarksFactoryConfig read GetMarksFactoryConfig;
+    function GetMarksFactoryConfig: IMarkFactoryConfig;
+    property MarksFactoryConfig: IMarkFactoryConfig read GetMarksFactoryConfig;
 
     function GetMarksCategoryFactoryConfig: IMarkCategoryFactoryConfig;
     property MarksCategoryFactoryConfig: IMarkCategoryFactoryConfig read GetMarksCategoryFactoryConfig;
@@ -134,9 +156,6 @@ type
 
     function GetZmpConfig: IZmpConfig;
     property ZmpConfig: IZmpConfig read GetZmpConfig;
-
-    function GetLastSearchResultConfig: ILastSearchResultConfig;
-    property LastSearchResultConfig: ILastSearchResultConfig read GetLastSearchResultConfig;
 
     function GetMapSvcScanConfig: IMapSvcScanConfig;
     property MapSvcScanConfig: IMapSvcScanConfig read GetMapSvcScanConfig;

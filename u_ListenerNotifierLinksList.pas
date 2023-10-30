@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ListenerNotifierLinksList;
@@ -23,12 +23,12 @@ unit u_ListenerNotifierLinksList;
 interface
 
 uses
-  Classes,
   SysUtils,
   i_Notifier,
   i_Listener,
   i_ListenerTime,
   i_NotifierTime,
+  i_InterfaceListSimple,
   i_ListenerNotifierLinksList,
   u_BaseInterfacedObject;
 
@@ -37,8 +37,8 @@ type
   private
     FCS: IReadWriteSync;
     FLinksActive: Boolean;
-    FListenerList: IInterfaceList;
-    FNotifierList: IInterfaceList;
+    FListenerList: IInterfaceListSimple;
+    FNotifierList: IInterfaceListSimple;
     function GetCount: Integer;
     procedure ActivateLink(AIndex: Integer);
     procedure DeactivateLink(AIndex: Integer);
@@ -63,6 +63,7 @@ type
 implementation
 
 uses
+  u_InterfaceListSimple,
   u_Synchronizer;
 
 { TListenerNotifierLinksList }
@@ -70,9 +71,9 @@ uses
 constructor TListenerNotifierLinksList.Create;
 begin
   inherited Create;
-  FCS := MakeSyncRW_Sym(Self, TRUE);
-  FListenerList := TInterfaceList.Create;
-  FNotifierList := TInterfaceList.Create;
+  FCS := GSync.SyncSymmetricalRecursive.Make(Self.ClassName);
+  FListenerList := TInterfaceListSimple.Create;
+  FNotifierList := TInterfaceListSimple.Create;
   FLinksActive := False;
 end;
 

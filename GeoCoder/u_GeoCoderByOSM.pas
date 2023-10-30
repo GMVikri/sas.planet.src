@@ -1,21 +1,21 @@
 {******************************************************************************}
-{* SAS.Planet (SAS.Планета)     					                                     *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.		                  *}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
-{* (at your option) any later version.  				                              *}
-{*      								                                                      *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
 {* This program is distributed in the hope that it will be useful,            *}
 {* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
-{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the	            *}
-{* GNU General Public License for more details. 			                        *}
-{*      								                                                      *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
-{*      								                                                      *}
-{* http://sasgis.ru     						                                          *}
-{* az@sasgis.ru 							                                                *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GeoCoderByOSM;
@@ -24,6 +24,7 @@ interface
 
 uses
   Classes,
+  i_InterfaceListSimple,
   i_NotifierOperation,
   i_LocalCoordConverter,
   i_DownloadRequest,
@@ -43,7 +44,7 @@ type
       const AResult: IDownloadResultOk;
       const ASearch: WideString;
       const ALocalConverter: ILocalCoordConverter
-    ): IInterfaceList; override;
+    ): IInterfaceListSimple; override;
   public
   end;
 
@@ -52,69 +53,16 @@ implementation
 uses
   SysUtils,
   StrUtils,
+  ALString,
   t_GeoTypes,
   i_GeoCoder,
+  i_VectorDataItemSimple,
   i_CoordConverter,
-  u_ResStrings,
-  u_GeoCodePlacemark;
+  u_InterfaceListSimple,
+  u_ResStrings;
 
 
 { TGeoCoderByOSM }
-procedure QuickSort(
-  var AList:IInterfaceList;
-  var ADist: array of Double;
-    L, R: Integer
-  );
-  var
-    I, J: Integer;
-    P: Double;
-    TD: Double;
-
-  begin
-    repeat
-      I := L;
-      J := R;
-      P := ADist[(L + R) shr 1];
-      repeat
-        while ADist[I] < P do begin
-          Inc(I);
-        end;
-        while ADist[J] > P do begin
-          Dec(J);
-        end;
-        if I <= J then begin
-          TD := ADist[I];
-
-          ADist[I] := ADist[J];
-          ADist[J] := TD;
-          AList.Exchange(I,J);
-          Inc(I);
-          Dec(J);
-        end;
-      until I > J;
-      if L < J then begin
-        QuickSort(AList, ADist, L, J);
-      end;
-      L := I;
-    until I >= R;
-end;
-
-procedure SortIt(
-  var AList:IInterfaceList;
-  const ALocalConverter: ILocalCoordConverter
-    );
-var
-  i: integer;
-  VMark: IGeoCodePlacemark;
-  VDistArr: array of Double;
-begin
-   setlength(VDistArr,AList.Count);
-   for i := 0 to AList.GetCount-1 do begin
-      VMark := IGeoCodePlacemark(AList.Items[i]);
-      VDistArr[i]:=ALocalConverter.GetGeoConverter.Datum.CalcDist(ALocalConverter.GetCenterLonLat,VMark.GetPoint);
-   end;
-  QuickSort(AList,VDistArr,0,AList.GetCount-1);
-end;
 
 function TGeoCoderByOSM.ParseResultToPlacemarksList(
   const ACancelNotifier: INotifierOperation;
@@ -122,15 +70,17 @@ function TGeoCoderByOSM.ParseResultToPlacemarksList(
   const AResult: IDownloadResultOk;
   const ASearch: WideString;
   const ALocalConverter: ILocalCoordConverter
-): IInterfaceList;
+): IInterfaceListSimple;
 var
-  slat, slon, sname, sdesc, sfulldesc, osm_type, osm_id: string;
+  slat, slon: AnsiString;
+  sname, sdesc, sfulldesc: string;
+  osm_type, osm_id: AnsiString;
   i, j, k: integer;
   VPoint: TDoublePoint;
-  VPlace: IGeoCodePlacemark;
-  VList: IInterfaceList;
-  VFormatSettings: TFormatSettings;
-  VStr: string;
+  VPlace: IVectorDataItem;
+  VList: IInterfaceListSimple;
+  VFormatSettings: TALFormatSettings;
+  VStr: AnsiString;
 begin
   sfulldesc := '';
   sdesc := '';
@@ -139,56 +89,56 @@ begin
   end;
 
   VFormatSettings.DecimalSeparator := '.';
-  VList := TInterfaceList.Create;
+  VList := TInterfaceListSimple.Create;
   SetLength(Vstr, AResult.Data.Size);
   Move(AResult.Data.Buffer^, Vstr[1], AResult.Data.Size);
-  i := PosEx('<searchresults', VStr);
+  i := ALPosEx('<searchresults', VStr);
 
-  while (PosEx('<place', VStr, i) > i) and (i > 0) do begin
+  while (ALPosEx('<place', VStr, i) > i) and (i > 0) do begin
     j := i;
 
-    i := PosEx('osm_type=''', VStr, j);
-    j := PosEx('''', VStr, i + 10);
+    i := ALPosEx('osm_type=''', VStr, j);
+    j := ALPosEx('''', VStr, i + 10);
     osm_type := Copy(VStr, i + 10, j - (i + 10));
 
-    i := PosEx('osm_id=''', VStr, j);
-    j := PosEx('''', VStr, i + 8);
+    i := ALPosEx('osm_id=''', VStr, j);
+    j := ALPosEx('''', VStr, i + 8);
     osm_id := Copy(VStr, i + 8, j - (i + 8));
 
-    i := PosEx('lat=''', VStr, j);
-    j := PosEx('''', VStr, i + 5);
+    i := ALPosEx('lat=''', VStr, j);
+    j := ALPosEx('''', VStr, i + 5);
     slat := Copy(VStr, i + 5, j - (i + 5));
 
-    i := PosEx('lon=''', VStr, j);
-    j := PosEx('''', VStr, i + 5);
+    i := ALPosEx('lon=''', VStr, j);
+    j := ALPosEx('''', VStr, i + 5);
     slon := Copy(VStr, i + 5, j - (i + 5));
 
-    i := PosEx('display_name=''', VStr, j);
-    j := PosEx('''', VStr, i + 14);
+    i := ALPosEx('display_name=''', VStr, j);
+    j := ALPosEx('''', VStr, i + 14);
     sname := Utf8ToAnsi(Copy(VStr, i + 14, j - (i + 14)));
 
-    i := PosEx('class=''', VStr, j);
+    i := ALPosEx('class=''', VStr, j);
     if i > j then begin
-      j := PosEx('''', VStr, i + 7);
+      j := ALPosEx('''', VStr, i + 7);
       sdesc := Utf8ToAnsi(Copy(VStr, i + 7, j - (i + 7)));
     end;
 
-    i := PosEx('type=''', VStr, j);
+    i := ALPosEx('type=''', VStr, j);
     if i > j then begin
-      j := PosEx('''', VStr, i + 6);
+      j := ALPosEx('''', VStr, i + 6);
       sdesc := sdesc + '=' + Utf8ToAnsi(Copy(VStr, i + 6, j - (i + 6)));
     end;
 
     // финт ушам, дабы не занимать много места
     // будем разбивать "Кураж, 84, Вокзальная улица, Магнитогорск, Челябинская область, Уральский федеральный округ, 455000, Российская Федерация"
     // до первой запятой, остальное пихать в переменную sdesc
-    k := posEx(',', sname, 1);
+    k := PosEx(',', sname, 1);
     sdesc := sdesc + (copy(sname, k, length(sname) - k + 1));
     sname := (copy(sname, 1, k - 1));
     // конец финта ушами
 
 
-    sfulldesc := 'http://www.openstreetmap.org/browse/' + osm_type + '/' + osm_id;
+    sfulldesc := 'http://www.openstreetmap.org/browse/' + string(osm_type) + '/' + string(osm_id);
 
     //    Получение ссылки на иконку объекта, (на будущее), дабы обозначать найденные объекты...
     //    k := PosEx('icon=''', AStr, i);
@@ -199,15 +149,14 @@ begin
     //    end else sfulldesc:='';
 
     try
-      VPoint.Y := StrToFloat(slat, VFormatSettings);
-      VPoint.X := StrToFloat(slon, VFormatSettings);
+      VPoint.Y := ALStrToFloat(slat, VFormatSettings);
+      VPoint.X := ALStrToFloat(slon, VFormatSettings);
     except
       raise EParserError.CreateFmt(SAS_ERR_CoordParseError, [slat, slon]);
     end;
-    VPlace := TGeoCodePlacemark.Create(VPoint, sname, sdesc, sfulldesc, 4);
+    VPlace := PlacemarkFactory.Build(VPoint, sname, sdesc, sfulldesc, 4);
     VList.Add(VPlace);
   end;
-  if VList.GetCount>1 then SortIt(VList ,ALocalConverter);
   Result := VList;
 end;
 

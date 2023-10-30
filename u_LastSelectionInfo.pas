@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_LastSelectionInfo;
@@ -24,21 +24,21 @@ interface
 
 uses
   i_LastSelectionInfo,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   u_ConfigDataElementBase;
 
 type
   TLastSelectionInfo = class(TConfigDataElementBaseEmptySaveLoad, ILastSelectionInfo)
   private
     // Полигон последнего выделения при операциях с областью.
-    FPolygon: ILonLatPolygon;
+    FPolygon: IGeometryLonLatPolygon;
     // Масштаб, на котором было последнее выделение
     FZoom: Byte;
   private
     function GetZoom: Byte;
-    function GetPolygon: ILonLatPolygon;
+    function GetPolygon: IGeometryLonLatPolygon;
     procedure SetPolygon(
-      const ALonLatPolygon: ILonLatPolygon;
+      const ALonLatPolygon: IGeometryLonLatPolygon;
       AZoom: Byte
     );
   public
@@ -56,7 +56,7 @@ begin
   FZoom := 0;
 end;
 
-function TLastSelectionInfo.GetPolygon: ILonLatPolygon;
+function TLastSelectionInfo.GetPolygon: IGeometryLonLatPolygon;
 begin
   LockRead;
   try
@@ -77,7 +77,7 @@ begin
 end;
 
 procedure TLastSelectionInfo.SetPolygon(
-  const ALonLatPolygon: ILonLatPolygon;
+  const ALonLatPolygon: IGeometryLonLatPolygon;
   AZoom: Byte
 );
 begin

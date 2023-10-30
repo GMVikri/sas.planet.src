@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_MapTypeEdit;
@@ -30,8 +30,10 @@ uses
   ExtCtrls,
   ComCtrls,
   Spin,
-  u_CommonFormAndFrameParents,
-  u_MapType;
+  i_MapTypes,
+  i_LanguageManager,
+  i_TileStorageTypeList,
+  u_CommonFormAndFrameParents;
 
 type
   TfrmMapTypeEdit = class(TFormWitghLanguageManager)
@@ -40,7 +42,7 @@ type
     lblUrl: TLabel;
     lblFolder: TLabel;
     lblSubMenu: TLabel;
-    CheckBox1: TCheckBox;
+    chkBoxSeparator: TCheckBox;
     EditHotKey: THotKey;
     btnOk: TButton;
     btnCancel: TButton;
@@ -96,9 +98,15 @@ type
     procedure btnResetVersionClick(Sender: TObject);
     procedure btnResetHeaderClick(Sender: TObject);
   private
-    FMapType: TMapType;
+    FTileStorageTypeList: ITileStorageTypeListStatic;
+    FMapType: IMapType;
   public
-    function EditMapModadl(AMapType: TMapType): Boolean;
+    function EditMapModadl(const AMapType: IMapType): Boolean;
+  public
+    constructor Create(
+      const ALanguageManager: ILanguageManager;
+      const ATileStorageTypeList: ITileStorageTypeListStatic
+    );
   end;
 
 implementation
@@ -111,6 +119,15 @@ uses
   u_ResStrings;
 
 {$R *.dfm}
+
+constructor TfrmMapTypeEdit.Create(
+  const ALanguageManager: ILanguageManager;
+  const ATileStorageTypeList: ITileStorageTypeListStatic
+);
+begin
+  inherited Create(ALanguageManager);
+  FTileStorageTypeList := ATileStorageTypeList;
+end;
 
 function GetCacheIdFromIndex(const AIndex: Integer): Byte;
 begin
@@ -166,7 +183,7 @@ begin
     FMapType.GUIConfig.ParentSubMenu.Value:=EditParSubMenu.Text;
     FMapType.GUIConfig.HotKey:=EditHotKey.HotKey;
     FMapType.GUIConfig.Enabled:=CheckEnabled.Checked;
-    FMapType.GUIConfig.Separator:=CheckBox1.Checked;
+    FMapType.GUIConfig.Separator:=chkBoxSeparator.Checked;
   finally
     FMapType.GUIConfig.UnlockWrite;
   end;
@@ -182,7 +199,7 @@ begin
   finally
     FMapType.StorageConfig.UnlockWrite;
   end;
-  FMapType.VersionConfig.Version := FMapType.VersionConfig.VersionFactory.CreateByStoreString(edtVersion.Text);
+  FMapType.VersionRequestConfig.Version := FMapType.VersionRequestConfig.VersionFactory.GetStatic.CreateByStoreString(edtVersion.Text);
   FMapType.Abilities.UseDownload := chkDownloadEnabled.Checked;
 
   ModalResult := mrOk;
@@ -212,7 +229,7 @@ begin
   end;
 
   EditParSubMenu.Text:=FMapType.GUIConfig.ParentSubMenu.GetDefaultValue;
-  CheckBox1.Checked:=FMapType.Zmp.GUI.Separator;
+  chkBoxSeparator.Checked:=FMapType.Zmp.GUI.Separator;
   CheckEnabled.Checked:=FMapType.Zmp.GUI.Enabled;
   edtVersion.Text := FMapType.Zmp.VersionConfig.StoreString;
 end;
@@ -249,7 +266,7 @@ begin
   end;
 end;
 
-function TfrmMapTypeEdit.EditMapModadl(AMapType: TMapType): Boolean;
+function TfrmMapTypeEdit.EditMapModadl(const AMapType: IMapType): Boolean;
 var
   VDownloadState: ITileDownloaderStateStatic;
 begin
@@ -277,7 +294,7 @@ begin
     if not (FMapType.StorageConfig.CacheTypeCode in [c_File_Cache_Id_GE,c_File_Cache_Id_GC]) then begin
       pnlCacheType.Visible := True;
       pnlCacheType.Enabled := True;
-      CBCacheType.ItemIndex := GetIndexFromCacheId(FMapType.Zmp.StorageConfig.CacheTypeCode);
+      CBCacheType.ItemIndex := GetIndexFromCacheId(FMapType.StorageConfig.CacheTypeCode);
     end else begin
       // GE or GC
       pnlCacheType.Visible := False;
@@ -286,10 +303,10 @@ begin
   finally
     FMapType.StorageConfig.UnlockRead;
   end;
-  CheckBox1.Checked:=FMapType.GUIConfig.Separator;
+  chkBoxSeparator.Checked:=FMapType.GUIConfig.Separator;
   CheckEnabled.Checked:=FMapType.GUIConfig.Enabled;
-  edtVersion.Text := FMapType.VersionConfig.Version.StoreString;
-  pnlHeader.Visible := GState.Config.GlobalAppConfig.IsShowDebugInfo;
+  edtVersion.Text := FMapType.VersionRequestConfig.Version.StoreString;
+  pnlHeader.Visible := GState.Config.InternalDebugConfig.IsShowDebugInfo;
   VDownloadState := FMapType.TileDownloadSubsystem.State.GetStatic;
 
   // download availability

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_MarkCategoryDBSmlInternal;
@@ -23,13 +23,13 @@ unit i_MarkCategoryDBSmlInternal;
 interface
 
 uses
+  i_Category,
   i_MarkCategory;
 
 type
   IMarkCategoryDBSmlInternal = interface
     ['{44BC212B-F9A2-4304-9E04-D44D16817445}']
-    function SaveCategory2File: boolean;
-    procedure LoadCategoriesFromFile;
+    function IsCategoryFromThisDb(const ACategory: ICategory): Boolean;
     function GetCategoryByID(id: integer): IMarkCategory;
     function GetCategoryByName(const AName: string): IMarkCategory;
   end;

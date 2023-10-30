@@ -115,7 +115,7 @@ object frmMain: TfrmMain
       end
     end
     object SrcToolbar: TTBXToolbar
-      Left = 230
+      Left = 238
       Top = 25
       DockPos = 224
       DockRow = 1
@@ -144,10 +144,19 @@ object frmMain: TfrmMain
         Options = [tboDropdownArrow]
         Caption = ''
         Hint = 'Select overlay layers'
+        object btnHideAll: TTBXItem
+          OnClick = btnHideAllClick
+          Caption = 'Hide All'
+          Hint = ''
+        end
+        object HideSeparator: TTBSeparatorItem
+          Caption = ''
+          Hint = ''
+        end
       end
     end
     object TBMarksToolbar: TTBXToolbar
-      Left = 363
+      Left = 365
       Top = 25
       DockPos = 363
       DockRow = 1
@@ -158,7 +167,7 @@ object frmMain: TfrmMain
       Caption = 'Placemarks'
     end
     object GPSToolbar: TTBXToolbar
-      Left = 534
+      Left = 536
       Top = 25
       DockPos = 504
       DockRow = 1
@@ -520,6 +529,12 @@ object frmMain: TfrmMain
             Options = [tboDropdownArrow]
             Caption = 'Show for...'
             Hint = ''
+            object tbitmFillingMapAsMain: TTBXItem
+              OnAdjustFont = AdjustFont
+              OnClick = TBfillMapAsMainClick
+              Caption = 'Displayed Main Map'
+              Hint = ''
+            end
           end
           object TBXSeparatorItem11: TTBXSeparatorItem
             Caption = ''
@@ -927,6 +942,11 @@ object frmMain: TfrmMain
             Hint = ''
           end
         end
+        object tbxsbmProjection: TTBXSubmenuItem
+          Images = MenusImageList
+          Caption = 'Projection'
+          Hint = ''
+        end
         object TBXSeparatorItem10: TTBXSeparatorItem
           Caption = ''
           Hint = ''
@@ -1261,7 +1281,7 @@ object frmMain: TfrmMain
           Images = MenusImageList
           ShortCut = 112
           OnClick = tbitmOnlineHelpClick
-          Caption = 'Online Help (http://sasgis.ru/wikisasiya)'
+          Caption = 'Online Help (http://sasgis.org/wikisasiya)'
           Hint = ''
         end
         object tbitmAbout: TTBXItem
@@ -1278,25 +1298,35 @@ object frmMain: TfrmMain
         object tbitmOnlineHome: TTBXItem
           Images = MenusImageList
           OnClick = tbitmOnlineHomeClick
-          Caption = 'Web Site (http://www.sasgis.ru)'
+          Caption = 'Web Site (http://www.sasgis.org)'
           Hint = ''
         end
         object tbtmHelpBugTrack: TTBXItem
           Images = MenusImageList
           OnClick = tbtmHelpBugTrackClick
-          Caption = 'Issue Tracker (http://sasgis.ru/mantis)'
+          Caption = 'Issue Tracker (http://sasgis.org/mantis)'
           Hint = ''
         end
         object tbitmOnlineForum: TTBXItem
           Images = MenusImageList
           OnClick = tbitmOnlineForumClick
-          Caption = 'Community  (http://www.sasgis.ru/forum)'
+          Caption = 'Community  (http://www.sasgis.org/forum)'
+          Hint = ''
+        end
+        object tbxSep1: TTBXSeparatorItem
+          Caption = ''
+          Hint = ''
+        end
+        object tbitmCheckUpdate: TTBXItem
+          Images = MenusImageList
+          OnClick = tbitmCheckUpdateClick
+          Caption = 'Check for updates...'
           Hint = ''
         end
       end
     end
     object TBXToolBarSearch: TTBXToolbar
-      Left = 429
+      Left = 399
       Top = 0
       DockPos = 413
       Options = [tboNoRotation]
@@ -1322,7 +1352,7 @@ object frmMain: TfrmMain
       end
     end
     object FillDates: TTBXToolbar
-      Left = 629
+      Left = 610
       Top = 0
       DefaultDock = TBDock
       DockPos = 643
@@ -1374,8 +1404,8 @@ object frmMain: TfrmMain
         OnChange = DateTimePicker1Change
       end
       object DateTimePicker2: TDateTimePicker
-        Left = 203
-        Top = 21
+        Left = 141
+        Top = 0
         Width = 81
         Height = 21
         Date = 40830.496065717590000000
@@ -1455,7 +1485,7 @@ object frmMain: TfrmMain
         Hint = ''
       end
       object labZoom: TLabel
-        Left = 8
+        Left = 24
         Top = 221
         Width = 14
         Height = 13
@@ -1475,7 +1505,7 @@ object frmMain: TfrmMain
         Transparent = True
       end
       object ZSlider: TImage32
-        Left = 2
+        Left = 18
         Top = 32
         Width = 25
         Height = 153
@@ -1543,6 +1573,8 @@ object frmMain: TfrmMain
         Hint = 'Delete Point'
       end
       object TBEditPathLabel: TTBXItem
+        AutoCheck = True
+        Checked = True
         ImageIndex = 37
         Images = MenusImageList
         OnClick = TBEditPathLabelClick
@@ -1612,7 +1644,7 @@ object frmMain: TfrmMain
       end
       object TBEditSelectPolylineRadius: TSpinEdit
         Left = 0
-        Top = 138
+        Top = 136
         Width = 61
         Height = 22
         MaxValue = 100000
@@ -1684,11 +1716,13 @@ object frmMain: TfrmMain
   object OpenSessionDialog: TOpenDialog
     DefaultExt = '*.sls'
     Filter = 
-      'All compatible formats (*.kml,*.plt,*.kmz,*.sls,*.hlg,*.gpx)|*.k' +
-      'ml;*.plt;*.kmz;*.sls;*.hlg;*.gpx|Google KML files (*.kml)|*.kml|' +
-      'OziExplorer Track Point File Version 2.1 (*.plt)|*.plt|Google KM' +
-      'Z files (*.kmz)|*.kmz|Download session (*.sls)|*.sls|Selection (' +
-      '*.hlg)|*.hlg|GPS Exchange files (*.gpx)|*.gpx'
+      'All compatible formats (*.kml,*.plt,*.kmz,*.sls,*.hlg,*.gpx,*.jp' +
+      'g)|*.kml;*.plt;*.kmz;*.sls;*.hlg;*.gpx;*.jpg|Google KML files (*' +
+      '.kml)|*.kml|OziExplorer Track Point File Version 2.1 (*.plt)|*.p' +
+      'lt|Google KMZ files (*.kmz)|*.kmz|Download session (*.sls)|*.sls' +
+      '|Selection (*.hlg)|*.hlg|GPS Exchange files (*.gpx)|*.gpx|JPEG I' +
+      'mage with Exif (*.jpg)|*.jpg'
+    Options = [ofAllowMultiSelect, ofEnableSizing]
     Left = 208
     Top = 208
   end

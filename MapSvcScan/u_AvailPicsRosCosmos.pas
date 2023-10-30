@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_AvailPicsRosCosmos;
 
 interface
@@ -7,7 +27,6 @@ uses
   Classes,
   XMLIntf,
   XMLDoc,
-  StrUtils,
   i_InetConfig,
   i_DownloadResult,
   i_DownloadRequest,
@@ -16,7 +35,7 @@ uses
   i_DownloadResultFactory,
   u_DownloadRequest,
   u_AvailPicsAbstract,
-  u_BinaryDataByMemStream;
+  u_BinaryData;
 
 type
   TAvailPicsRC = class(TAvailPicsAbstract)
@@ -48,9 +67,8 @@ procedure GenerateAvailPicsRC(
 implementation
 
 uses
-  forms,
-  xmldom,
-  windows,
+  Forms,
+  Windows,
   ALZLibExGZ,
   t_GeoTypes,
   i_BinaryData,
@@ -60,8 +78,7 @@ uses
   u_DownloaderHttp,
   u_Notifier,
   u_NotifierOperation,
-  u_DownloadResultFactory,
-  u_GeoToStr;
+  u_GeoToStrFunc;
 
 procedure GenerateAvailPicsRC(
   var ARCs: TAvailPicsRosCosmos;
@@ -127,30 +144,30 @@ var
 begin
   // Переводим BBox из LonLat в метры и сразу формируем нужный формат для запроса
   VGeoConverter := FLocalConverter.GeoConverter;
-  
+
   // TopLeft
   VLonLatPoint := FTileInfoPtr^.TileRect.TopLeft;
   VLonLatMetr := VGeoConverter.LonLat2Metr(VLonLatPoint);
-  Result := RoundEx(VLonLatMetr.X, c_Roscosmos_Precision)+' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
+  Result := RoundEx(VLonLatMetr.X, c_Roscosmos_Precision) + ' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
   VStartingPoint := Result;
-  
+
   // TopRight
   VLonLatPoint.X := FTileInfoPtr.TileRect.Right;
   VLonLatMetr := VGeoConverter.LonLat2Metr(VLonLatPoint);
-  Result := Result+','+RoundEx(VLonLatMetr.X, c_Roscosmos_Precision)+' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
+  Result := Result + ',' + RoundEx(VLonLatMetr.X, c_Roscosmos_Precision) + ' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
 
   // BottomRight
   VLonLatPoint.Y := FTileInfoPtr.TileRect.Bottom;
   VLonLatMetr := VGeoConverter.LonLat2Metr(VLonLatPoint);
-  Result := Result+','+RoundEx(VLonLatMetr.X, c_Roscosmos_Precision)+' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
+  Result := Result + ',' + RoundEx(VLonLatMetr.X, c_Roscosmos_Precision) + ' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
 
   // BottomLeft
   VLonLatPoint.X := FTileInfoPtr.TileRect.Left;
   VLonLatMetr := VGeoConverter.LonLat2Metr(VLonLatPoint);
-  Result := Result+','+RoundEx(VLonLatMetr.X, c_Roscosmos_Precision)+' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
+  Result := Result + ',' + RoundEx(VLonLatMetr.X, c_Roscosmos_Precision) + ' '+RoundEx(VLonLatMetr.Y, c_Roscosmos_Precision);
 
   // TopLeft
-  Result := Result+','+VStartingPoint;
+  Result := Result + ',' + VStartingPoint;
 end;
 
 
@@ -186,16 +203,16 @@ var
   VId,
   VDateTime,
   VGeometry,
-  VSurvayDate : String;
+  VSurvayDate: String;
   VAddResult: Boolean;
-  i : Integer;
+  i: Integer;
   VParams: TStrings;
   VMemoryStream: TMemoryStream;
-  VUnZipped : TMemoryStream;
+  VUnZipped: TMemoryStream;
   VItemExists: Boolean;
   VItemFetched: TDateTime;
 begin
-  Result:=0;
+  Result := 0;
   if (not Assigned(FTileInfoPtr.AddImageProc)) then
     Exit;
 
@@ -209,7 +226,7 @@ begin
 
     XMLDocument := TXMLDocument.Create(Application);
 
-    VParams:=TStringList.Create;
+    VParams := TStringList.Create;
     try
       VParams.NameValueSeparator := ':';
       VParams.Text := AResultOk.RawResponseHeader;
@@ -266,9 +283,9 @@ begin
         VSurvayDate := PlacemarkNode.GetAttribute('survaydate');
 
         try
-          VParams:=nil;
-          VParams:=TStringList.Create;
-          VDate := copy(VSurvayDate,1,10);
+          VParams := nil;
+          VParams := TStringList.Create;
+          VDate := copy(VSurvayDate, 1, 10);
           VDate[5] := DateSeparator;
           VDate[8] := DateSeparator;
           VParams.Values['id'] := VId;
@@ -287,13 +304,13 @@ begin
           VParams.Values['Provider'] := 'geoportal.ntsomz.ru';
 
           // формируем имя снимка (первую часть)
-          VPosList := VDateTime+' ['+Vid+'] ';
+          VPosList := VDateTime + ' [' + Vid + '] ';
 
           // про поиске в хранилище не будем закладываться на возвращённое имя спутника
           VItemExists := ItemExists(FBaseStorageName, (VPosList + FSatName), @VItemFetched);
 
           // а выхлоп будет с возвращённым именем спутника
-          VPosList := VPosList+VParams.Values['satellite'];
+          VPosList := VPosList + VParams.Values['satellite'];
           VAddResult := FTileInfoPtr.AddImageProc(
             Self,
             VDate,
@@ -315,7 +332,7 @@ begin
             except
 
             end;
-            VParams:=nil;
+            VParams := nil;
           end;
         end;
       end;
@@ -331,7 +348,7 @@ var
   VPostData: IBinaryData;
   VPostdataStr: Ansistring;
   VDownloader: IDownloader; // TDownloaderHttp;
-  VPostRequest : IDownloadPostRequest; // POST
+  VPostRequest: IDownloadPostRequest; // POST
   VHeader: Ansistring;
   VLink: Ansistring;
   VResult: IDownloadResult;
@@ -354,11 +371,7 @@ begin
   // Формируем строку запроса на залогинивание на сайте
   VPostdataStr := MakeSignInPostString;
 
-  VPostData :=
-        TBinaryDataByMemStream.CreateFromMem(
-          Length(VPostdataStr)*SizeOf(Char),
-          PChar(VPostdataStr)
-        );
+  VPostData := TBinaryData.CreateByAnsiString(VPostdataStr);
   VPostRequest := TDownloadPostRequest.Create(
                    Vlink,
                    VHeader,
@@ -366,8 +379,8 @@ begin
                    AInetConfig.GetStatic
                   );
 
-  VDownloader:=TDownloaderHttp.Create(FResultFactory, TRUE);
-  VCancelNotifier := TNotifierOperation.Create(TNotifierBase.Create);
+  VDownloader := TDownloaderHttp.Create(FResultFactory, TRUE);
+  VCancelNotifier := TNotifierOperationFake.Create;
   VResult := VDownloader.DoRequest(
               VPostRequest,
               VCancelNotifier,
@@ -378,11 +391,7 @@ begin
    // Формируем строку запроса на получение списка снимков
    VPostDataStr := MakePostString;
 
-   VPostData :=
-    TBinaryDataByMemStream.CreateFromMem(
-      Length(VPostDataStr)*SizeOf(Char),
-      PChar(VPostDataStr)
-      );
+   VPostData := TBinaryData.CreateByAnsiString(VPostdataStr);
 
    VHeader :=
       'User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.52 Safari/537.17'+#$D#$A+

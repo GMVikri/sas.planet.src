@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MarkerProviderForVectorItemForMarkPoints;
 
 interface
@@ -8,7 +28,7 @@ uses
   i_VectorDataItemSimple,
   i_MarksDrawConfig,
   i_Bitmap32Static,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_BitmapMarker,
   i_MarkerProviderForVectorItem,
   u_BaseInterfacedObject;
@@ -16,8 +36,7 @@ uses
 type
   TMarkerProviderForVectorItemForMarkPoints = class(TBaseInterfacedObject, IMarkerProviderForVectorItem)
   private
-    FBitmapFactory: IBitmap32StaticFactory;
-    FConfig: IMarksDrawConfigStatic;
+    FBitmapFactory: IBitmap32BufferFactory;
     FMarkerDefault: IMarkerDrawableChangeable;
 
     FBitmapWithText: TBitmap32;
@@ -48,12 +67,14 @@ type
       ASize: Integer
     ): IBitmapMarker;
   private
-    function GetMarker(const AItem: IVectorDataItemSimple): IMarkerDrawable;
+    function GetMarker(
+      const AConfig: ICaptionDrawConfigStatic;
+      const AItem: IVectorDataItem
+    ): IMarkerDrawable;
   public
     constructor Create(
-      const ABitmapFactory: IBitmap32StaticFactory;
-      const AMarkerDefault: IMarkerDrawableChangeable;
-      const AConfig: IMarksDrawConfigStatic
+      const ABitmapFactory: IBitmap32BufferFactory;
+      const AMarkerDefault: IMarkerDrawableChangeable
     );
     destructor Destroy; override;
   end;
@@ -65,25 +86,24 @@ uses
   SysUtils,
   GR32_Resamplers,
   t_GeoTypes,
+  i_AppearanceOfVectorItem,
   u_Bitmap32ByStaticBitmap,
   u_BitmapMarker,
   u_BitmapFunc,
   u_MarkerDrawableByBitmapMarker,
   u_MarkerDrawableByBitmap32Static,
   u_MarkerDrawableComplex,
-  u_GeoFun;
+  u_GeoFunc;
 
 { TMarkerProviderForVectorItemForMarkPoints }
 
 constructor TMarkerProviderForVectorItemForMarkPoints.Create(
-  const ABitmapFactory: IBitmap32StaticFactory;
-  const AMarkerDefault: IMarkerDrawableChangeable;
-  const AConfig: IMarksDrawConfigStatic
+  const ABitmapFactory: IBitmap32BufferFactory;
+  const AMarkerDefault: IMarkerDrawableChangeable
 );
 begin
   inherited Create;
   FBitmapFactory := ABitmapFactory;
-  FConfig := AConfig;
   FMarkerDefault := AMarkerDefault;
 
   FBitmapWithText := TBitmap32.Create;
@@ -101,8 +121,11 @@ begin
 end;
 
 function TMarkerProviderForVectorItemForMarkPoints.GetCaptionBitmap(
-  const ACaption: string; AFontSize: Integer; ATextColor, ATextBgColor: TColor32;
-  ASolidBgDraw: Boolean): IBitmap32Static;
+  const ACaption: string;
+  AFontSize: Integer;
+  ATextColor, ATextBgColor: TColor32;
+  ASolidBgDraw: Boolean
+): IBitmap32Static;
 var
   VTextSize: TSize;
   VBitmap: TBitmap32ByStaticBitmap;
@@ -115,7 +138,7 @@ begin
     VTextSize.cx:=VTextSize.cx+2;
     VTextSize.cy:=VTextSize.cy+2;
     FBitmapWithText.SetSize(VTextSize.cx + 2,VTextSize.cy + 2);
-    if FConfig.UseSolidCaptionBackground then begin
+    if ASolidBgDraw then begin
       FBitmapWithText.Clear(ATextBgColor);
       FBitmapWithText.RenderText(2, 2, ACaption, 1, SetAlpha(ATextColor,255));
     end else begin
@@ -128,7 +151,7 @@ begin
       VBitmap.SetSizeFrom(FBitmapWithText);
       VBitmap.Clear(0);
       VBitmap.Draw(0, 0, FBitmapWithText);
-      Result := VBitmap.BitmapStatic;
+      Result := VBitmap.MakeAndClear;
     finally
       VBitmap.Free;
     end;
@@ -176,11 +199,13 @@ begin
 end;
 
 function TMarkerProviderForVectorItemForMarkPoints.GetMarker(
-  const AItem: IVectorDataItemSimple): IMarkerDrawable;
+  const AConfig: ICaptionDrawConfigStatic;
+  const AItem: IVectorDataItem
+): IMarkerDrawable;
 var
   VMarker: IBitmapMarker;
-  VMarkWithIcon: IVectorDataItemPointWithIconParams;
-  VMarkWithCaption: IVectorDataItemPointWithCaptionParams;
+  VAppearanceIcon: IAppearancePointIcon;
+  VAppearanceCaption: IAppearancePointCaption;
   VMarkerIcon: IMarkerDrawable;
   VMarkerCaption: IMarkerDrawable;
   VMarkerSize: Integer;
@@ -188,25 +213,25 @@ begin
   Result := nil;
   VMarkerSize := 0;
   VMarkerIcon := nil;
-  if Supports(AItem, IVectorDataItemPointWithIconParams, VMarkWithIcon) then begin
-    VMarkerSize := VMarkWithIcon.MarkerSize;
+  if Supports(AItem.Appearance, IAppearancePointIcon, VAppearanceIcon) then begin
+    VMarkerSize := VAppearanceIcon.MarkerSize;
     VMarker := nil;
-    if (VMarkWithIcon.Pic <> nil) then begin
-      VMarker := VMarkWithIcon.Pic.GetMarker;
+    if (VAppearanceIcon.Pic <> nil) then begin
+      VMarker := VAppearanceIcon.Pic.GetMarker;
     end;
     VMarkerIcon := GetIconMarker(VMarker, VMarkerSize);
   end;
 
   VMarkerCaption := nil;
-  if FConfig.ShowPointCaption then begin
-    if Supports(AItem, IVectorDataItemPointWithCaptionParams, VMarkWithCaption) then begin
+  if AConfig.ShowPointCaption then begin
+    if Supports(AItem.Appearance, IAppearancePointCaption, VAppearanceCaption) then begin
       VMarkerCaption :=
         GetCaptionMarker(
           AItem.Name,
-          VMarkWithCaption.FontSize,
-          VMarkWithCaption.TextColor,
-          VMarkWithCaption.TextBgColor,
-          FConfig.UseSolidCaptionBackground,
+          VAppearanceCaption.FontSize,
+          VAppearanceCaption.TextColor,
+          VAppearanceCaption.TextBgColor,
+          AConfig.UseSolidCaptionBackground,
           VMarkerSize
         );
     end;
@@ -253,7 +278,7 @@ begin
       finally
         VSampler.Free;
       end;
-      VBitmapStatic := VBitmap.BitmapStatic;
+      VBitmapStatic := VBitmap.MakeAndClear;
     finally
       VBitmap.Free;
     end;

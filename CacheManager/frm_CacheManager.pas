@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_CacheManager;
@@ -44,6 +44,7 @@ uses
   i_ContentTypeManager,
   i_TileFileNameGeneratorsList,
   i_TileFileNameParsersList,
+  i_TileStorageTypeList,
   i_ValueToStringConverter,
   i_MapVersionFactoryList,
   i_GlobalBerkeleyDBHelper,
@@ -74,6 +75,10 @@ type
     chkOverwrite: TCheckBox;
     btnSelectSrcPath: TButton;
     btnSelectDestPath: TButton;
+    chkCheckSourceVersion: TCheckBox;
+    edtSourceVersion: TEdit;
+    chkReplaceDestVersion: TCheckBox;
+    edtDestVersion: TEdit;
     procedure btnStartClick(Sender: TObject);
     procedure btnSelectSrcPathClick(Sender: TObject);
     procedure btnSelectDestPathClick(Sender: TObject);
@@ -90,9 +95,10 @@ type
     FGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
     FContentTypeManager: IContentTypeManager;
     FCoordConverterFactory: ICoordConverterFactory;
+    FTileStorageTypeList: ITileStorageTypeListStatic;
     FFileNameGeneratorsList: ITileFileNameGeneratorsList;
     FFileNameParsersList: ITileFileNameParsersList;
-    FValueToStringConverterConfig: IValueToStringConverterConfig;
+    FValueToStringConverter: IValueToStringConverterChangeable;
     procedure ProcessCacheConverter;
     function CreateSimpleTileStorage(
       const ARootPath: string;
@@ -111,11 +117,11 @@ type
       const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
       const AContentTypeManager: IContentTypeManager;
       const ACoordConverterFactory: ICoordConverterFactory;
+      const ATileStorageTypeList: ITileStorageTypeListStatic;
       const AFileNameGeneratorsList: ITileFileNameGeneratorsList;
       const AFileNameParsersList: ITileFileNameParsersList;
-      const AValueToStringConverterConfig: IValueToStringConverterConfig
+      const AValueToStringConverter: IValueToStringConverterChangeable
     ); reintroduce;
-    destructor Destroy; override;
   end;
 
 implementation
@@ -126,20 +132,18 @@ uses
   {$WARN UNIT_PLATFORM ON}
   c_CacheTypeCodes,
   c_CoordConverter,
-  i_MapVersionConfig,
+  i_MapVersionInfo,
   i_ContentTypeInfo,
   i_TileFileNameGenerator,
   i_TileFileNameParser,
+  i_TileStorageTypeListItem,
   i_CacheConverterProgressInfo,
   u_Notifier,
   u_NotifierOperation,
   u_ThreadCacheConverter,
-  u_TileStorageFileSystem,
-  u_TileStorageBerkeleyDB,
-  u_TileStorageDBMS,
-  u_TileStorageGE,
   u_TileStorageTar,
   u_CacheConverterProgressInfo,
+  u_Synchronizer,
   frm_ProgressCacheConvrter;
 
 {$R *.dfm}
@@ -155,9 +159,10 @@ constructor TfrmCacheManager.Create(
   const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
   const AContentTypeManager: IContentTypeManager;
   const ACoordConverterFactory: ICoordConverterFactory;
+  const ATileStorageTypeList: ITileStorageTypeListStatic;
   const AFileNameGeneratorsList: ITileFileNameGeneratorsList;
   const AFileNameParsersList: ITileFileNameParsersList;
-  const AValueToStringConverterConfig: IValueToStringConverterConfig
+  const AValueToStringConverter: IValueToStringConverterChangeable
 );
 begin
   inherited Create(ALanguageManager);
@@ -171,7 +176,8 @@ begin
   FFileNameParsersList := AFileNameParsersList;
   FContentTypeManager := AContentTypeManager;
   FCoordConverterFactory := ACoordConverterFactory;
-  FValueToStringConverterConfig := AValueToStringConverterConfig;
+  FValueToStringConverter := AValueToStringConverter;
+  FTileStorageTypeList := ATileStorageTypeList;
 
   cbbCacheTypes.ItemIndex := 1; // SAS.Planet
   cbbDestCacheTypes.ItemIndex := 5; // BerkeleyDB
@@ -188,77 +194,28 @@ var
   VContentType: IContentTypeInfoBasic;
   VFileNameGenerator: ITileFileNameGenerator;
   VFileNameParser: ITileFileNameParser;
+  VStorageType: ITileStorageTypeListItem;
 begin
   Result := nil;
 
-  if (AArchiveType <> atNoArch) and
-     (AFormatID in [
+  VContentType := FContentTypeManager.GetInfoByExt(ADefExtention);
+  if VContentType = nil then begin
+    Exit;
+  end;
+
+  if AArchiveType <> atNoArch then begin
+     if (AFormatID in [
       c_File_Cache_Id_BDB,
       c_File_Cache_Id_BDB_Versioned,
       c_File_Cache_Id_DBMS,
       c_File_Cache_Id_GE,
       c_File_Cache_Id_GC
     ]) then begin
-    Exit;
-  end;
-
-  VContentType := FContentTypeManager.GetInfoByExt(ADefExtention);
-  if AFormatID in [c_File_Cache_Id_BDB, c_File_Cache_Id_BDB_Versioned] then begin
-    Result :=
-      TTileStorageBerkeleyDB.Create(
-        FGlobalBerkeleyDBHelper,
-        ACoordConverter,
-        ARootPath,
-        (AFormatID = c_File_Cache_Id_BDB_Versioned),
-        FGCNotifier,
-        nil,
-        FContentTypeManager,
-        FMapVersionFactoryList.GetSimpleVersionFactory,
-        VContentType
-      );
-  end else if AFormatID = c_File_Cache_Id_DBMS then begin
-    Result :=
-      TTileStorageDBMS.Create(
-        ACoordConverter,
-        '', // TODO: add global DBMS Root here
-        ARootPath,
-        FGCNotifier,
-        nil,
-        FContentTypeManager,
-        FMapVersionFactoryList.GetSimpleVersionFactory,
-        VContentType
-      );
-  end else if AFormatID = c_File_Cache_Id_GE then begin
-//    Result :=
-//      TTileStorageGE.Create(
-//        VStorageConfig,
-//        VGlobalCacheConfig,
-//        FMapVersionFactoryList.GetGEVersionFactory
-//        FContentTypeManager
-//      );
-  end else if AFormatID = c_File_Cache_Id_GC then begin
-//    Result :=
-//      TTileStorageGC.Create(
-//        VStorageConfig,
-//        VGlobalCacheConfig,
-//        FMapVersionFactoryList.GetGEVersionFactory
-//        FContentTypeManager
-//      );
-  end else if AFormatID in [c_File_Cache_Id_GMV, c_File_Cache_Id_SAS, c_File_Cache_Id_ES, c_File_Cache_Id_GM, c_File_Cache_Id_GM_Aux, c_File_Cache_Id_GM_Bing] then begin
+      Exit;
+    end;
     VFileNameGenerator := FFileNameGeneratorsList.GetGenerator(AFormatID);
     VFileNameParser := FFileNameParsersList.GetParser(AFormatID);
     case AArchiveType of
-      atNoArch: begin
-        Result :=
-          TTileStorageFileSystem.Create(
-            ACoordConverter,
-            ARootPath,
-            VContentType,
-            FMapVersionFactoryList.GetSimpleVersionFactory,
-            VFileNameGenerator,
-            VFileNameParser
-          );
-      end;
       atTar: begin
         Result :=
           TTileStorageTar.Create(
@@ -276,13 +233,19 @@ begin
     else
       // Error
     end;
+  end else begin
+    VStorageType := FTileStorageTypeList.GetItemByCode(AFormatID);
+    if VStorageType <> nil then begin
+      Result :=
+        VStorageType.StorageType.BuildStorage(
+          nil,
+          ACoordConverter,
+          VContentType,
+          ARootPath,
+          nil
+        );
+    end;
   end;
-end;
-
-destructor TfrmCacheManager.Destroy;
-begin
-  FAppClosingNotifier := nil;
-  inherited Destroy;
 end;
 
 procedure TfrmCacheManager.btnSelectSrcPathClick(Sender: TObject);
@@ -340,9 +303,9 @@ procedure TfrmCacheManager.ProcessCacheConverter;
 
   function IsTileCacheInArchive(const APath: string; out AArchType: TTileCacheInArchiveType): Boolean;
   begin
-    if SameStr(ExtractFileExt(APath), '.tar') then begin
+    if LowerCase(ExtractFileExt(APath)) = '.tar' then begin
       AArchType := atTar;
-    end else if SameStr(ExtractFileExt(APath), '.zip') then begin
+    end else if LowerCase(ExtractFileExt(APath)) = '.zip' then begin
       AArchType := atZip;
     end else if ExtractFileExt(APath) <> '' then begin
       AArchType := atUnk;
@@ -358,8 +321,10 @@ var
   VOperationID: Integer;
   VConverterThread: TThreadCacheConverter;
   VCoordConverter: ICoordConverter;
-  VSource: ITileStorage;
-  VTarget: ITileStorage;
+  VSourceStorage: ITileStorage;
+  VDestStorage: ITileStorage;
+  VSourceVersion: IMapVersionInfo;
+  VDestVersion: IMapVersionInfo;
   VSourcePath: string;
   VDestPath: string;
   VDefExtention: string;
@@ -368,7 +333,10 @@ var
 begin
   VProgressInfo := TCacheConverterProgressInfo.Create;
 
-  VCancelNotifierInternal := TNotifierOperation.Create(TNotifierBase.Create);
+  VCancelNotifierInternal :=
+    TNotifierOperation.Create(
+      TNotifierBase.Create(GSync.SyncVariable.Make(Self.ClassName + 'Notifier'))
+    );
   VOperationID := VCancelNotifierInternal.CurrentOperation;
 
   VCoordConverter := FCoordConverterFactory.GetCoordConverterByCode(CGoogleProjectionEPSG, CTileSplitQuadrate256x256);
@@ -387,7 +355,7 @@ begin
     VSourcePath := IncludeTrailingPathDelimiter(VSourcePath);
   end;
 
-  VSource :=
+  VSourceStorage :=
     CreateSimpleTileStorage(
       VSourcePath,
       VDefExtention,
@@ -398,13 +366,13 @@ begin
 
   VDestPath := Trim(edtDestPath.Text);
   if not IsTileCacheInArchive(VDestPath, VArchType) then begin
-    VDestPath := IncludeTrailingPathDelimiter(VDestPath);  
+    VDestPath := IncludeTrailingPathDelimiter(VDestPath);
     if GetCacheFormatFromIndex(cbbDestCacheTypes.ItemIndex) <> c_File_Cache_Id_DBMS then begin
       ForceDirectories(VDestPath);
     end;
   end;
 
-  VTarget :=
+  VDestStorage :=
     CreateSimpleTileStorage(
       VDestPath,
       VDefExtention,
@@ -413,12 +381,25 @@ begin
       GetCacheFormatFromIndex(cbbDestCacheTypes.ItemIndex)
     );
 
+  VSourceVersion := nil;
+  VDestVersion := nil;
+
+  if chkCheckSourceVersion.Checked then begin
+    VSourceVersion := FMapVersionFactoryList.GetSimpleVersionFactory.CreateByStoreString(Trim(edtSourceVersion.Text));
+  end;
+
+  if chkReplaceDestVersion.Checked then begin
+    VDestVersion := FMapVersionFactoryList.GetSimpleVersionFactory.CreateByStoreString(Trim(edtDestVersion.Text));
+  end;
+
   VConverterThread := TThreadCacheConverter.Create(
     VCancelNotifierInternal,
     VOperationID,
-    VSource,
+    VSourceStorage,
+    VSourceVersion,
     VSourcePath,
-    VTarget,
+    VDestStorage,
+    VDestVersion,
     chkIgnoreTNE.Checked,
     chkRemove.Checked,
     chkOverwrite.Checked,
@@ -432,7 +413,7 @@ begin
     FTimerNoifier,
     VCancelNotifierInternal,
     VProgressInfo,
-    FValueToStringConverterConfig
+    FValueToStringConverter
   );
 end;
 

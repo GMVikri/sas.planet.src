@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MarkPictureSimple;
@@ -25,6 +25,7 @@ interface
 uses
   SysUtils,
   Classes,
+  t_Hash,
   i_SimpleFlag,
   i_BinaryData,
   i_BitmapMarker,
@@ -33,8 +34,11 @@ uses
   u_BaseInterfacedObject;
 
 type
+  TMarkPictureAnchor = (paDefault, paCenter);
+
   TMarkPictureSimple = class(TBaseInterfacedObject, IMarkPicture)
   private
+    FHash: THashValue;
     FFullFileName: string;
     FName: string;
     FLoader: IBitmapTileLoader;
@@ -42,12 +46,15 @@ type
     FCS: IReadWriteSync;
     FBitmapMarker: IBitmapMarker;
     FSource: IBinaryData;
+    FPicAnchor: TMarkPictureAnchor;
 
     FInitedFlag: ISimpleFlag;
     procedure InitPic;
   private
+    function GetHash: THashValue;
+
     function GetMarker: IBitmapMarker;
-  private
+
     function GetName: string;
     function GetSource: IBinaryData;
 
@@ -55,11 +62,12 @@ type
     function GetTextVerticalAlignment: TVerticalAlignment;
   public
     constructor Create(
+      const AHash: THashValue;
       const AFullFileName: string;
       const AName: string;
-      const ALoader: IBitmapTileLoader
+      const ALoader: IBitmapTileLoader;
+      const APicAnchor: TMarkPictureAnchor = paDefault
     );
-    destructor Destroy; override;
   end;
 
 implementation
@@ -74,24 +82,22 @@ uses
 
 { TMarkPictureSimple }
 constructor TMarkPictureSimple.Create(
+  const AHash: THashValue;
   const AFullFileName: string;
   const AName: string;
-  const ALoader: IBitmapTileLoader
+  const ALoader: IBitmapTileLoader;
+  const APicAnchor: TMarkPictureAnchor
 );
 begin
   inherited Create;
+  FHash := AHash;
   FFullFileName := AFullFileName;
   FName := AName;
   FLoader := ALoader;
+  FPicAnchor := APicAnchor;
 
-  FCS := MakeSyncRW_Sym(Self, False);
+  FCS := GSync.SyncSymmetrical.Make(Self.ClassName);
   FInitedFlag := TSimpleFlagWithInterlock.Create;
-end;
-
-destructor TMarkPictureSimple.Destroy;
-begin
-  FCS := nil;
-  inherited;
 end;
 
 function TMarkPictureSimple.GetTextAlignment: TAlignment;
@@ -124,8 +130,18 @@ begin
         end;
         VBitmap := FLoader.Load(FSource);
 
-        VAnchor.X := VBitmap.Size.X / 2;
-        VAnchor.Y := VBitmap.Size.Y;
+        case FPicAnchor of
+          paCenter: begin
+            VAnchor.X := VBitmap.Size.X / 2;
+            VAnchor.Y := VBitmap.Size.Y / 2;
+          end;
+        else // paDefault
+          begin
+            VAnchor.X := VBitmap.Size.X / 2;
+            VAnchor.Y := VBitmap.Size.Y;
+          end;
+        end;
+        
         FBitmapMarker := TBitmapMarker.Create(VBitmap, VAnchor);
         FInitedFlag.SetFlag;
       end;
@@ -133,6 +149,11 @@ begin
       FCS.EndWrite;
     end;
   end;
+end;
+
+function TMarkPictureSimple.GetHash: THashValue;
+begin
+  Result := FHash;
 end;
 
 function TMarkPictureSimple.GetMarker: IBitmapMarker;

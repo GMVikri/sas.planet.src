@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MarkFactory;
@@ -23,16 +23,16 @@ unit u_MarkFactory;
 interface
 
 uses
-  GR32,
-  t_GeoTypes,
-  i_VectorItemLonLat,
-  i_VectorItemsFactory,
+  t_Bitmap32,
+  i_GeometryLonLat,
+  i_Appearance,
+  i_AppearanceOfMarkFactory,
   i_VectorDataItemSimple,
+  i_HashFunction,
   i_ImportConfig,
   i_MarkPicture,
-  i_MarksFactoryConfig,
+  i_MarkFactoryConfig,
   i_Category,
-  i_MarksSimple,
   i_MarkTemplate,
   i_HtmlToHintTextConverter,
   i_MarkFactory,
@@ -42,135 +42,69 @@ type
 
   TMarkFactory = class(TBaseInterfacedObject, IMarkFactory)
   private
-    FConfig: IMarksFactoryConfig;
-    FFactory: IVectorItemsFactory;
+    FHashFunction: IHashFunction;
+    FConfig: IMarkFactoryConfig;
+    FAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
     FHintConverter: IHtmlToHintTextConverter;
 
     FMarkPictureList: IMarkPictureList;
-
-    function CreatePoint(
-      const AName: string;
-      const APic: IMarkPicture;
-      const ACategory: ICategory;
-      const ADesc: string;
-      const APoint: TDoublePoint;
-      ATextColor, ATextBgColor: TColor32;
-      AFontSize, AMarkerSize: Integer
-    ): IMarkPoint;
-    function CreateLine(
-      const AName: string;
-      const ACategory: ICategory;
-      const ADesc: string;
-      const ALine: ILonLatPath;
-      ALineColor: TColor32;
-      ALineWidth: Integer
-    ): IMarkLine;
-    function CreatePoly(
-      const AName: string;
-      const ACategory: ICategory;
-      const ADesc: string;
-      const ALine: ILonLatPolygon;
-      ABorderColor, AFillColor: TColor32;
-      ALineWidth: Integer
-    ): IMarkPoly;
+    function PrepareAppearence(
+      const ASource: IAppearance;
+      const AParams: IImportMarkParams
+    ): IAppearance;
+    function PreparePointAppearence(
+      const ASource: IAppearance;
+      const AParams: IImportPointParams
+    ): IAppearance;
+    function PrepareLineAppearence(
+      const ASource: IAppearance;
+      const AParams: IImportLineParams
+    ): IAppearance;
+    function PreparePolyAppearence(
+      const ASource: IAppearance;
+      const AParams: IImportPolyParams
+    ): IAppearance;
   private
-    function CreateNewPoint(
-      const APoint: TDoublePoint;
+    function CreateNewMark(
+      const AGeometry: IGeometryLonLat;
       const AName: string;
       const ADesc: string;
-      const ATemplate: IMarkTemplatePoint = nil
-    ): IMarkPoint;
-    function CreateNewLine(
-      const ALine: ILonLatPath;
+      const ATemplate: IMarkTemplate = nil
+    ): IVectorDataItem;
+    function CreateMark(
+      const AGeometry: IGeometryLonLat;
       const AName: string;
       const ADesc: string;
-      const ATemplate: IMarkTemplateLine = nil
-    ): IMarkLine;
-    function CreateNewPoly(
-      const ALine: ILonLatPolygon;
-      const AName: string;
-      const ADesc: string;
-      const ATemplate: IMarkTemplatePoly = nil
-    ): IMarkPoly;
-
-    function ModifyPoint(
-      const ASource: IMarkPoint;
-      const AName: string;
-      const APic: IMarkPicture;
       const ACategory: ICategory;
-      const ADesc: string;
-      const APoint: TDoublePoint;
-      ATextColor: TColor32;
-      ATextBgColor: TColor32;
-      AFontSize: Integer;
-      AMarkerSize: Integer
-    ): IMarkPoint;
-    function ModifyLine(
-      const ASource: IMarkLine;
-      const AName: string;
-      const ACategory: ICategory;
-      const ADesc: string;
-      const ALine: ILonLatPath;
-      ALineColor: TColor32;
-      ALineWidth: Integer
-    ): IMarkLine;
-    function ModifyPoly(
-      const ASource: IMarkPoly;
-      const AName: string;
-      const ACategory: ICategory;
-      const ADesc: string;
-      const ALine: ILonLatPolygon;
-      ABorderColor: TColor32;
-      AFillColor: TColor32;
-      ALineWidth: Integer
-    ): IMarkPoly;
+      const AAppearance: IAppearance
+    ): IVectorDataItem;
 
     function ReplaceCategory(
-      const AMark: IMark;
+      const AMark: IVectorDataItem;
       const ACategory: ICategory
-    ): IMark;
+    ): IVectorDataItem;
 
-    function SimpleModifyPoint(
-      const ASource: IMarkPoint;
-      const ALonLat: TDoublePoint
-    ): IMarkPoint;
-    function SimpleModifyLine(
-      const ASource: IMarkLine;
-      const ALine: ILonLatPath;
-      const ADesc: string
-    ): IMarkLine;
-    function SimpleModifyPoly(
-      const ASource: IMarkPoly;
-      const ALine: ILonLatPolygon
-    ): IMarkPoly;
+    function ModifyGeometry(
+      const ASource: IVectorDataItem;
+      const AGeometry: IGeometryLonLat;
+      const ADesc: string = ''
+    ): IVectorDataItem;
 
-    function PreparePoint(
-      const AItem: IVectorDataItemPoint;
+    function PrepareMark(
+      const AItem: IVectorDataItem;
       const AName: string;
-      const AParams: IImportPointParams;
-      const ACategory: ICategory;
-      const ADefaultPic: IMarkPicture
-    ): IMarkPoint;
-    function PrepareLine(
-      const AItem: IVectorDataItemLine;
-      const AName: string;
-      const AParams: IImportLineParams;
+      const AParams: IImportMarkParams;
       const ACategory: ICategory
-    ): IMarkLine;
-    function PreparePoly(
-      const AItem: IVectorDataItemPoly;
-      const AName: string;
-      const AParams: IImportPolyParams;
-      const ACategory: ICategory
-    ): IMarkPoly;
+    ): IVectorDataItem;
 
     function GetMarkPictureList: IMarkPictureList;
-    function GetConfig: IMarksFactoryConfig;
+    function GetConfig: IMarkFactoryConfig;
   public
     constructor Create(
-      const AConfig: IMarksFactoryConfig;
+      const AConfig: IMarkFactoryConfig;
       const AMarkPictureList: IMarkPictureList;
-      const AFactory: IVectorItemsFactory;
+      const AHashFunction: IHashFunction;
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const AHintConverter: IHtmlToHintTextConverter
     );
   end;
@@ -179,39 +113,52 @@ implementation
 
 uses
   SysUtils,
-  u_MarkPoint,
-  u_MarkLine,
-  u_MarkPoly;
+  t_Hash,
+  i_AppearanceOfVectorItem,
+  u_MarkFullBase,
+  u_VectorDataItemBase;
 
 { TMarkFactory }
 
 constructor TMarkFactory.Create(
-  const AConfig: IMarksFactoryConfig;
+  const AConfig: IMarkFactoryConfig;
   const AMarkPictureList: IMarkPictureList;
-  const AFactory: IVectorItemsFactory;
+  const AHashFunction: IHashFunction;
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const AHintConverter: IHtmlToHintTextConverter
 );
 begin
+  Assert(Assigned(AHashFunction));
   inherited Create;
   FConfig := AConfig;
-  FFactory := AFactory;
+  FHashFunction := AHashFunction;
+  FHashFunction := AHashFunction;
+  FAppearanceOfMarkFactory := AAppearanceOfMarkFactory;
   FHintConverter := AHintConverter;
   FMarkPictureList := AMarkPictureList;
 end;
 
-function TMarkFactory.CreateNewLine(
-  const ALine: ILonLatPath;
-  const AName, ADesc: string;
-  const ATemplate: IMarkTemplateLine
-): IMarkLine;
+function TMarkFactory.CreateNewMark(
+  const AGeometry: IGeometryLonLat;
+  const AName: string;
+  const ADesc: string;
+  const ATemplate: IMarkTemplate = nil
+): IVectorDataItem;
 var
-  VTemplate: IMarkTemplateLine;
+  VTemplate: IMarkTemplate;
   VName: string;
   VCategory: ICategory;
 begin
+  Result := nil;
   VTemplate := ATemplate;
   if VTemplate = nil then begin
-    VTemplate := FConfig.LineTemplateConfig.DefaultTemplate;
+    if Supports(AGeometry, IGeometryLonLatPoint) then begin
+      VTemplate := FConfig.PointTemplateConfig.DefaultTemplate;
+    end else if Supports(AGeometry, IGeometryLonLatLine) then begin
+      VTemplate := FConfig.LineTemplateConfig.DefaultTemplate;
+    end else if Supports(AGeometry, IGeometryLonLatPolygon) then begin
+      VTemplate := FConfig.PolyTemplateConfig.DefaultTemplate;
+    end;
   end;
 
   VName := AName;
@@ -222,484 +169,263 @@ begin
   VCategory := VTemplate.Category;
 
   Result :=
-    CreateLine(
+    CreateMark(
+      AGeometry,
       VName,
-      VCategory,
       ADesc,
-      ALine,
-      VTemplate.LineColor,
-      VTemplate.LineWidth
+      VCategory,
+      VTemplate.Appearance
     );
 end;
 
-function TMarkFactory.CreateNewPoint(
-  const APoint: TDoublePoint;
+function TMarkFactory.CreateMark(
+  const AGeometry: IGeometryLonLat;
   const AName, ADesc: string;
-  const ATemplate: IMarkTemplatePoint
-): IMarkPoint;
+  const ACategory: ICategory;
+  const AAppearance: IAppearance
+): IVectorDataItem;
 var
-  VTemplate: IMarkTemplatePoint;
-  VName: string;
-  VPicName: string;
-  VPic: IMarkPicture;
-  VCategory: ICategory;
+  VHash: THashValue;
+  VMainInfo: IVectorDataItemMainInfo;
 begin
-  VTemplate := ATemplate;
-  if VTemplate = nil then begin
-    VTemplate := FConfig.PointTemplateConfig.DefaultTemplate;
-  end;
+  Assert(Assigned(AGeometry));
+  Assert(Assigned(AAppearance));
 
-  VName := AName;
-  if VName = '' then begin
-    VName := VTemplate.GetNewName;
-  end;
-
-  VCategory := VTemplate.Category;
-
-  VPicName := VTemplate.PicName;
-  VPic  := FMarkPictureList.FindByNameOrDefault(VPicName);
-
-  Result :=
-    CreatePoint(
-      VName,
-      VPic,
-      VCategory,
-      ADesc,
-      APoint,
-      VTemplate.TextColor,
-      VTemplate.TextBgColor,
-      VTemplate.FontSize,
-      VTemplate.MarkerSize
-    );
-end;
-
-function TMarkFactory.CreateNewPoly(
-  const ALine: ILonLatPolygon;
-  const AName, ADesc: string;
-  const ATemplate: IMarkTemplatePoly
-): IMarkPoly;
-var
-  VTemplate: IMarkTemplatePoly;
-  VName: string;
-  VCategory: ICategory;
-begin
-  VTemplate := ATemplate;
-  if VTemplate = nil then begin
-    VTemplate := FConfig.PolyTemplateConfig.DefaultTemplate;
-  end;
-
-  VName := AName;
-  if VName = '' then begin
-    VName := VTemplate.GetNewName;
-  end;
-
-  VCategory := VTemplate.Category;
-
-  Result :=
-    CreatePoly(
-      VName,
-      VCategory,
-      ADesc,
-      ALine,
-      VTemplate.LineColor,
-      VTemplate.FillColor,
-      VTemplate.LineWidth
-    );
-end;
-
-function TMarkFactory.CreatePoint(
-  const AName: string;
-  const APic: IMarkPicture;
-  const ACategory: ICategory;
-  const ADesc: string;
-  const APoint: TDoublePoint;
-  ATextColor, ATextBgColor: TColor32;
-  AFontSize, AMarkerSize: Integer
-): IMarkPoint;
-begin
-  Result :=
-    TMarkPoint.Create(
-      FHintConverter,
-      AName,
-      APic,
-      ACategory,
-      ADesc,
-      APoint,
-      ATextColor,
-      ATextBgColor,
-      AFontSize,
-      AMarkerSize
-    );
-end;
-
-function TMarkFactory.CreateLine(
-  const AName: string;
-  const ACategory: ICategory;
-  const ADesc: string;
-  const ALine: ILonLatPath;
-  ALineColor: TColor32;
-  ALineWidth: Integer
-): IMarkLine;
-begin
-  Result :=
-    TMarkLine.Create(
+  VHash := FHashFunction.CalcHashByString(AName);
+  FHashFunction.UpdateHashByString(VHash, ADesc);
+  VMainInfo :=
+    TMarkMainInfo.Create(
+      VHash,
       FHintConverter,
       AName,
       ACategory,
-      ADesc,
-      ALine,
-      ALineColor,
-      ALineWidth
+      ADesc
     );
-end;
 
-function TMarkFactory.CreatePoly(
-  const AName: string;
-  const ACategory: ICategory;
-  const ADesc: string;
-  const ALine: ILonLatPolygon;
-  ABorderColor, AFillColor: TColor32;
-  ALineWidth: Integer
-): IMarkPoly;
-begin
+  VHash := AGeometry.Hash;
+  FHashFunction.UpdateHashByHash(VHash, VMainInfo.Hash);
+  FHashFunction.UpdateHashByHash(VHash, AAppearance.Hash);
+
   Result :=
-    TMarkPoly.Create(
-      FHintConverter,
-      AName,
-      ACategory,
-      ADesc,
-      ALine,
-      ABorderColor,
-      AFillColor,
-      ALineWidth
+    TVectorDataItem.Create(
+      VHash,
+      AAppearance,
+      VMainInfo,
+      AGeometry
     );
 end;
 
-function TMarkFactory.SimpleModifyLine(
-  const ASource: IMarkLine;
-  const ALine: ILonLatPath;
+function TMarkFactory.ModifyGeometry(
+  const ASource: IVectorDataItem;
+  const AGeometry: IGeometryLonLat;
   const ADesc: string
-): IMarkLine;
+): IVectorDataItem;
 var
   VDesc: string;
+  VCategory: ICategory;
+  VMarkWithCategory: IVectorDataItemWithCategory;
 begin
   VDesc := ADesc;
   if ADesc = '' then begin
     VDesc := ASource.Desc;
   end;
-
+  VCategory := nil;
+  if Supports(ASource.MainInfo, IVectorDataItemWithCategory, VMarkWithCategory) then begin
+    VCategory := VMarkWithCategory.Category;
+  end;
   Result :=
-    CreateLine(
+    CreateMark(
+      AGeometry,
       ASource.Name,
-      ASource.Category,
-      VDesc,
-      ALine,
-      ASource.LineColor,
-      ASource.LineWidth
-    );
-end;
-
-function TMarkFactory.SimpleModifyPoint(
-  const ASource: IMarkPoint;
-  const ALonLat: TDoublePoint
-): IMarkPoint;
-begin
-  Result :=
-    CreatePoint(
-      ASource.Name,
-      ASource.Pic,
-      ASource.Category,
       ASource.Desc,
-      ALonLat,
-      ASource.TextColor,
-      ASource.TextBgColor,
-      ASource.FontSize,
-      ASource.MarkerSize
+      VCategory,
+      ASource.Appearance
     );
 end;
 
-function TMarkFactory.SimpleModifyPoly(
-  const ASource: IMarkPoly;
-  const ALine: ILonLatPolygon
-): IMarkPoly;
-begin
-  Result :=
-    CreatePoly(
-      ASource.Name,
-      ASource.Category,
-      ASource.Desc,
-      ALine,
-      ASource.LineColor,
-      ASource.FillColor,
-      ASource.LineWidth
-    );
-end;
-
-function TMarkFactory.ModifyPoint(
-  const ASource: IMarkPoint;
-  const AName: string;
-  const APic: IMarkPicture;
-  const ACategory: ICategory;
-  const ADesc: string;
-  const APoint: TDoublePoint;
-  ATextColor: TColor32;
-  ATextBgColor: TColor32;
-  AFontSize: Integer;
-  AMarkerSize: Integer
-): IMarkPoint;
-begin
-  Result :=
-    CreatePoint(
-      AName,
-      APic,
-      ACategory,
-      ADesc,
-      APoint,
-      ATextColor,
-      ATextBgColor,
-      AFontSize,
-      AMarkerSize
-    );
-end;
-
-function TMarkFactory.ModifyLine(
-  const ASource: IMarkLine;
-  const AName: string;
-  const ACategory: ICategory;
-  const ADesc: string;
-  const ALine: ILonLatPath;
-  ALineColor: TColor32;
-  ALineWidth: Integer
-): IMarkLine;
-begin
-  Result :=
-    CreateLine(
-      AName,
-      ACategory,
-      ADesc,
-      ALine,
-      ALineColor,
-      ALineWidth
-    );
-end;
-
-function TMarkFactory.ModifyPoly(
-  const ASource: IMarkPoly;
-  const AName: string;
-  const ACategory: ICategory;
-  const ADesc: string;
-  const ALine: ILonLatPolygon;
-  ABorderColor: TColor32;
-  AFillColor: TColor32;
-  ALineWidth: Integer
-): IMarkPoly;
-begin
-  Result :=
-    CreatePoly(
-      AName,
-      ACategory,
-      ADesc,
-      ALine,
-      ABorderColor,
-      AFillColor,
-      ALineWidth
-    );
-end;
-
-function TMarkFactory.PreparePoint(const AItem: IVectorDataItemPoint;
-  const AName: string; const AParams: IImportPointParams;
-  const ACategory: ICategory; const ADefaultPic: IMarkPicture): IMarkPoint;
+function TMarkFactory.PrepareAppearence(
+  const ASource: IAppearance;
+  const AParams: IImportMarkParams
+): IAppearance;
 var
-  VName: string;
-  VPic: IMarkPicture;
-  VTextColor, VTextBgColor: TColor32;
-  VFontSize, VMarkerSize: Integer;
-  VItemWithIconParams: IVectorDataItemPointWithIconParams;
-  VItemWithCaptionParams: IVectorDataItemPointWithCaptionParams;
+  VPointParams: IImportPointParams;
+  VLineParams: IImportLineParams;
+  VPolyParams: IImportPolyParams;
 begin
   Result := nil;
   if AParams <> nil then begin
-    VName := AName;
-    if VName = '' then begin
-      VName := AParams.Template.GetNewName;
+    if Supports(AParams, IImportPointParams, VPointParams) then begin
+      Result := PreparePointAppearence(ASource, VPointParams);
+    end else if Supports(AParams, IImportLineParams, VLineParams) then begin
+      Result := PrepareLineAppearence(ASource, VLineParams);
+    end else if Supports(AParams, IImportPolyParams, VPolyParams) then begin
+      Result := PreparePolyAppearence(ASource, VPolyParams);
     end;
-    VPic := ADefaultPic;
-    VFontSize := AParams.Template.FontSize;
-    VMarkerSize := AParams.Template.MarkerSize;
-    VTextColor := AParams.Template.TextColor;
-    VTextBgColor := AParams.Template.TextBgColor;
-    if Supports(AItem, IVectorDataItemPointWithIconParams, VItemWithIconParams) then begin
+  end;
+end;
+
+function TMarkFactory.PreparePointAppearence(
+  const ASource: IAppearance;
+  const AParams: IImportPointParams
+): IAppearance;
+var
+  VPic: IMarkPicture;
+  VPicName: string;
+  VTextColor, VTextBgColor: TColor32;
+  VFontSize, VMarkerSize: Integer;
+  VAppearanceCaption: IAppearancePointCaption;
+  VAppearanceIcon: IAppearancePointIcon;
+begin
+  Result := nil;
+  if AParams <> nil then begin
+    VPic := AParams.IconAppearance.Pic;
+    VPicName := AParams.IconAppearance.PicName;
+    VFontSize := AParams.CaptionAppearance.FontSize;
+    VMarkerSize := AParams.IconAppearance.MarkerSize;
+    VTextColor := AParams.CaptionAppearance.TextColor;
+    VTextBgColor := AParams.CaptionAppearance.TextBgColor;
+    if Supports(ASource, IAppearancePointIcon, VAppearanceIcon) then begin
       if not AParams.IsForcePicName then begin
-        VPic := VItemWithIconParams.Pic;
+        VPic := VAppearanceIcon.Pic;
+        VPicName := VAppearanceIcon.PicName;
       end;
       if not AParams.IsForceMarkerSize then begin
-        VMarkerSize := VItemWithIconParams.MarkerSize;
+        VMarkerSize := VAppearanceIcon.MarkerSize;
       end;
     end;
-    if Supports(AItem, IVectorDataItemPointWithCaptionParams, VItemWithCaptionParams) then begin
+    if Supports(ASource, IAppearancePointCaption, VAppearanceCaption) then begin
       if not AParams.IsForceTextColor then begin
-        VTextColor := VItemWithCaptionParams.TextColor;
+        VTextColor := VAppearanceCaption.TextColor;
       end;
       if not AParams.IsForceTextBgColor then begin
-        VTextBgColor := VItemWithCaptionParams.TextBgColor;
+        VTextBgColor := VAppearanceCaption.TextBgColor;
       end;
       if not AParams.IsForceFontSize then begin
-        VFontSize := VItemWithCaptionParams.FontSize;
+        VFontSize := VAppearanceCaption.FontSize;
       end;
     end;
     Result :=
-      CreatePoint(
-        VName,
-        VPic,
-        ACategory,
-        AItem.Desc,
-        AItem.Point,
+      FAppearanceOfMarkFactory.CreatePointAppearance(
         VTextColor,
         VTextBgColor,
         VFontSize,
+        VPicName,
+        VPic,
         VMarkerSize
       );
   end;
 end;
 
-function TMarkFactory.PrepareLine(
-  const AItem: IVectorDataItemLine;
-  const AName: string;
-  const AParams: IImportLineParams;
-  const ACategory: ICategory
-): IMarkLine;
+function TMarkFactory.PrepareLineAppearence(
+  const ASource: IAppearance;
+  const AParams: IImportLineParams
+): IAppearance;
 var
-  VName: string;
   VLineColor: TColor32;
   VLineWidth: Integer;
-  VItemWithLineParams: IVectorDataItemWithLineParams;
+  VAppearanceLine: IAppearanceLine;
 begin
   Result := nil;
   if AParams <> nil then begin
-    VName := AName;
-    if VName = '' then begin
-      VName := AParams.Template.GetNewName;
-    end;
-    VLineColor := AParams.Template.LineColor;
-    VLineWidth := AParams.Template.LineWidth;
-    if Supports(AItem, IVectorDataItemWithLineParams, VItemWithLineParams) then begin
+    VLineColor := AParams.LineAppearance.LineColor;
+    VLineWidth := AParams.LineAppearance.LineWidth;
+    if Supports(ASource, IAppearanceLine, VAppearanceLine) then begin
       if not AParams.IsForceLineColor then begin
-        VLineColor := VItemWithLineParams.LineColor;
+        VLineColor := VAppearanceLine.LineColor;
       end;
       if not AParams.IsForceLineWidth then begin
-        VLineWidth := VItemWithLineParams.LineWidth;
+        VLineWidth := VAppearanceLine.LineWidth;
       end;
     end;
     Result :=
-      CreateLine(
-        VName,
-        ACategory,
-        AItem.Desc,
-        AItem.Line,
+      FAppearanceOfMarkFactory.CreateLineAppearance(
         VLineColor,
         VLineWidth
       );
   end;
 end;
 
-function TMarkFactory.PreparePoly(const AItem: IVectorDataItemPoly;
-  const AName: string; const AParams: IImportPolyParams;
-  const ACategory: ICategory): IMarkPoly;
+function TMarkFactory.PrepareMark(
+  const AItem: IVectorDataItem;
+  const AName: string;
+  const AParams: IImportMarkParams;
+  const ACategory: ICategory
+): IVectorDataItem;
 var
-  VName: string;
+  VAppearance: IAppearance;
+begin
+  Result := nil;
+  if AParams <> nil then begin
+    VAppearance := PrepareAppearence(AItem.Appearance, AParams);
+    Result :=
+      CreateMark(
+        AItem.Geometry,
+        AName,
+        AItem.Desc,
+        ACategory,
+        VAppearance
+      );
+  end;
+end;
+
+function TMarkFactory.PreparePolyAppearence(
+  const ASource: IAppearance;
+  const AParams: IImportPolyParams
+): IAppearance;
+var
   VLineColor: TColor32;
   VLineWidth: Integer;
   VFillColor: TColor32;
-  VItemWithLineParams: IVectorDataItemWithLineParams;
-  VItemWithFillParams: IVectorDataItemPolyWithFillParams;
+  VAppearanceBorder: IAppearancePolygonBorder;
+  VAppearanceFill: IAppearancePolygonFill;
 begin
   Result := nil;
   if AParams <> nil then begin
-    VName := AName;
-    if VName = '' then begin
-      VName := AParams.Template.GetNewName;
-    end;
-    VLineColor := AParams.Template.LineColor;
-    VLineWidth := AParams.Template.LineWidth;
-    VFillColor := AParams.Template.FillColor;
-    if Supports(AItem, IVectorDataItemWithLineParams, VItemWithLineParams) then begin
+    VLineColor := AParams.BorderAppearance.LineColor;
+    VLineWidth := AParams.BorderAppearance.LineWidth;
+    VFillColor := AParams.FillAppearance.FillColor;
+    if Supports(ASource, IAppearancePolygonBorder, VAppearanceBorder) then begin
       if not AParams.IsForceLineColor then begin
-        VLineColor := VItemWithLineParams.LineColor;
+        VLineColor := VAppearanceBorder.LineColor;
       end;
       if not AParams.IsForceLineWidth then begin
-        VLineWidth := VItemWithLineParams.LineWidth;
+        VLineWidth := VAppearanceBorder.LineWidth;
       end;
     end;
-    if Supports(AItem, IVectorDataItemPolyWithFillParams, VItemWithFillParams) then begin
+    if Supports(ASource, IAppearancePolygonFill, VAppearanceFill) then begin
       if not AParams.IsForceFillColor then begin
-        VFillColor := VItemWithFillParams.FillColor;
+        VFillColor := VAppearanceFill.FillColor;
       end;
     end;
     Result :=
-      CreatePoly(
-        VName,
-        ACategory,
-        AItem.Desc,
-        AItem.Line,
+      FAppearanceOfMarkFactory.CreatePolygonAppearance(
         VLineColor,
-        VFillColor,
-        VLineWidth
+        VLineWidth,
+        VFillColor
       );
   end;
 end;
 
-function TMarkFactory.ReplaceCategory(const AMark: IMark;
-  const ACategory: ICategory): IMark;
-var
-  VMarkPoint: IMarkPoint;
-  VMarkLine: IMarkLine;
-  VMarkPoly: IMarkPoly;
+function TMarkFactory.ReplaceCategory(
+  const AMark: IVectorDataItem;
+  const ACategory: ICategory
+): IVectorDataItem;
 begin
   Result := nil;
   if AMark = nil then begin
     Exit;
   end;
-  if Supports(AMark, IMarkPoint, VMarkPoint) then begin
-    Result :=
-      ModifyPoint(
-        VMarkPoint,
-        VMarkPoint.Name,
-        VMarkPoint.Pic,
-        ACategory,
-        VMarkPoint.Desc,
-        VMarkPoint.Point,
-        VMarkPoint.TextColor,
-        VMarkPoint.TextBgColor,
-        VMarkPoint.FontSize,
-        VMarkPoint.MarkerSize
-      );
-  end else if Supports(AMark, IMarkLine, VMarkLine) then begin
-    Result :=
-      ModifyLine(
-        VMarkLine,
-        VMarkLine.Name,
-        ACategory,
-        VMarkLine.Desc,
-        VMarkLine.Line,
-        VMarkLine.LineColor,
-        VMarkLine.LineWidth
-      );
-  end else if Supports(AMark, IMarkPoly, VMarkPoly) then begin
-    Result :=
-      ModifyPoly(
-        VMarkPoly,
-        VMarkPoly.Name,
-        ACategory,
-        VMarkPoly.Desc,
-        VMarkPoly.Line,
-        VMarkPoly.LineColor,
-        VMarkPoly.FillColor,
-        VMarkPoly.LineWidth
-      );
-  end;
+  Result :=
+    CreateMark(
+      AMark.Geometry,
+      AMark.Name,
+      AMark.Desc,
+      ACategory,
+      AMark.Appearance
+    );
 end;
 
-function TMarkFactory.GetConfig: IMarksFactoryConfig;
+function TMarkFactory.GetConfig: IMarkFactoryConfig;
 begin
   Result := FConfig;
 end;

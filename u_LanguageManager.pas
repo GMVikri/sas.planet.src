@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_LanguageManager;
@@ -49,10 +49,10 @@ type
     procedure SetCurrentLanguageCode(const ACode: string);
 
     function GetCurrentLanguageIndex: Integer;
-    procedure SetCurrentLanguageIndex(AValue: Integer);
+    procedure SetCurrentLanguageIndex(const AValue: Integer);
 
     function GetLanguageList: ILanguageListStatic;
-    function GetLangNameByIndex(AIndex: Integer): string;
+    function GetLangNameByIndex(const AIndex: Integer): string;
   public
     constructor Create(const ALangRootPath: string);
     destructor Destroy; override;
@@ -100,13 +100,13 @@ end;
 
 procedure TLanguageManager.DoBeforeChangeNotify;
 var
-  i: Integer;
+  I: Integer;
 begin
   inherited;
   // force reloading forms with new selection
-  for i := 0 to application.ComponentCount - 1 do begin
-    if application.Components[i] is TCommonFormParent then begin
-      TCommonFormParent(application.Components[i]).RefreshTranslation;
+  for I := 0 to Application.ComponentCount - 1 do begin
+    if Application.Components[I] is TCommonFormParent then begin
+      TCommonFormParent(Application.Components[I]).RefreshTranslation;
     end;
   end;
 end;
@@ -144,7 +144,7 @@ begin
   end;
 end;
 
-function TLanguageManager.GetLangNameByIndex(AIndex: Integer): string;
+function TLanguageManager.GetLangNameByIndex(const AIndex: Integer): string;
 begin
   Result := FNames[AIndex];
 end;
@@ -155,13 +155,14 @@ begin
 end;
 
 procedure TLanguageManager.LoadLangs;
-  procedure Add(ACodes: TStringList; const AName, ACode: string);
+
+  procedure Add(const ACodes: TStringList; const AName, ACode: string);
   begin
     FNames.Add(AName);
     ACodes.Add(ACode);
   end;
 
-  procedure GetListOfLanguages(AList: TStringList);
+  procedure GetListOfLanguages(const AList: TStringList);
   var
     VIterator: IFileNameIterator;
     VFileNameW: WideString;
@@ -219,7 +220,7 @@ begin
   end;
 end;
 
-procedure TLanguageManager.SetCurrentLanguageIndex(AValue: Integer);
+procedure TLanguageManager.SetCurrentLanguageIndex(const AValue: Integer);
 var
   VLastUsedCode: string;
   VCurrCode: string;
@@ -263,7 +264,7 @@ begin
   TP_GlobalIgnoreClassProperty(TEmbeddedWB, 'UserAgent');
   TP_GlobalIgnoreClassProperty(TEmbeddedWB, 'About');
   TP_GlobalIgnoreClassProperty(TOpenDialog, 'DefaultExt');
-  TP_GlobalIgnoreClassProperty(TCustomBitmap32, 'ResamplerClassName');  
+  TP_GlobalIgnoreClassProperty(TCustomBitmap32, 'ResamplerClassName');
 end;
 
 end.

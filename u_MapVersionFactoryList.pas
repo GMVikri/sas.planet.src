@@ -1,9 +1,30 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MapVersionFactoryList;
 
 interface
 
 uses
-  i_MapVersionConfig,
+  i_HashFunction,
+  i_MapVersionFactory,
   i_MapVersionFactoryList,
   u_BaseInterfacedObject;
 
@@ -15,25 +36,27 @@ type
     FGEVersionFactory: IMapVersionFactory;
   private
     function GetSimpleVersionFactory: IMapVersionFactory;
-    function GetGEVersionFactory: IMapVersionFactory;
-    function GetVersionFactoryByCode(const ACacheTypeCode: Integer): IMapVersionFactory;
+    function GetGEVersionFactory: IMapVersionFactory; deprecated;
   public
-    constructor Create;
+    constructor Create(
+      const AHashFunction: IHashFunction
+    );
   end;
 
 implementation
 
 uses
-  c_CacheTypeCodes,
   u_MapVersionFactoryGE,
   u_MapVersionFactorySimpleString;
 
 { TMapVersionFactoryList }
 
-constructor TMapVersionFactoryList.Create;
+constructor TMapVersionFactoryList.Create(
+  const AHashFunction: IHashFunction
+);
 begin
   inherited Create;
-  FSimpleVersionFactory := TMapVersionFactorySimpleString.Create;
+  FSimpleVersionFactory := TMapVersionFactorySimpleString.Create(AHashFunction);
   FGEVersionFactory := TMapVersionFactoryGE.Create;
 end;
 
@@ -45,18 +68,6 @@ end;
 function TMapVersionFactoryList.GetSimpleVersionFactory: IMapVersionFactory;
 begin
   Result := FSimpleVersionFactory;
-end;
-
-function TMapVersionFactoryList.GetVersionFactoryByCode(const ACacheTypeCode: Integer): IMapVersionFactory;
-begin
-  case ACacheTypeCode of
-    c_File_Cache_Id_GE, c_File_Cache_Id_GC: begin
-      Result := FGEVersionFactory;
-    end;
-    else begin
-      Result := FSimpleVersionFactory;
-    end;
-  end;
 end;
 
 end.

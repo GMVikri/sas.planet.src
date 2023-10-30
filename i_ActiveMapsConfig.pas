@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_ActiveMapsConfig;
@@ -24,26 +24,15 @@ interface
 
 uses
   i_MapTypes,
-  i_Changeable,
+  i_MapTypeSet,
+  i_MapTypeSetChangeable,
   i_ConfigDataElement;
 
 type
-  IActiveMapSingle = interface(IChangeable)
-    ['{12F47503-E574-4F4F-A30C-7304D38410C7}']
-    function GetMapType: IMapType;
-    function GetIsActive: Boolean;
-  end;
-
-  IActiveMapSingleSet = interface
-    ['{4F39120B-56F6-4794-93D1-618287A72D59}']
-    function GetMapSingle(const AMapGUID: TGUID): IActiveMapSingle;
-  end;
-
   IMainActiveMap = interface(IConfigDataElement)
     procedure SelectMainByGUID(const AMapGUID: TGUID);
     function GetActiveMap: IMapTypeChangeable;
 
-    function GetMapSingleSet: IActiveMapSingleSet;
     function GetMapsSet: IMapTypeSet;
   end;
 
@@ -62,6 +51,7 @@ type
 
   IMainMapsConfig = interface(IActivMapWithLayers)
     ['{8A8A42A5-9252-4E85-812C-6A5EEEF98443}']
+    function GetActiveBitmapMapsSet: IMapTypeSetChangeable;
     function GetActiveBitmapLayersSet: IMapTypeSetChangeable;
     function GetActiveKmlLayersSet: IMapTypeSetChangeable;
   end;

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit fr_LonLat;
@@ -62,7 +62,7 @@ type
   private
     FCoordinates: TDoublePoint;
     FViewPortState: ILocalCoordConverterChangeable;
-    FValueToStringConverterConfig: IValueToStringConverterConfig;
+    FValueToStringConverter: IValueToStringConverterChangeable;
     FTileSelectStyle: TTileSelectStyle;
     function GetLonLat: TDoublePoint;
     procedure SetLonLat(const Value: TDoublePoint);
@@ -71,18 +71,19 @@ type
     constructor Create(
       const ALanguageManager: ILanguageManager;
       const AViewPortState: ILocalCoordConverterChangeable;
-      const AValueToStringConverterConfig: IValueToStringConverterConfig;
+      const AValueToStringConverter: IValueToStringConverterChangeable;
       ATileSelectStyle: TTileSelectStyle
     ); reintroduce;
     property LonLat: TDoublePoint read GetLonLat write SetLonLat;
+    function Validate: Boolean;
   end;
 
 implementation
 
 uses
   i_LocalCoordConverter,
-  u_GeoFun,
-  u_GeoToStr,
+  u_GeoFunc,
+  u_GeoToStrFunc,
   u_ResStrings;
 
 {$R *.dfm}
@@ -108,13 +109,13 @@ end;
 constructor TfrLonLat.Create(
   const ALanguageManager: ILanguageManager;
   const AViewPortState: ILocalCoordConverterChangeable;
-  const AValueToStringConverterConfig: IValueToStringConverterConfig;
+  const AValueToStringConverter: IValueToStringConverterChangeable;
   ATileSelectStyle: TTileSelectStyle
 );
 begin
   inherited Create(ALanguageManager);
   FViewPortState := AViewPortState;
-  FValueToStringConverterConfig := AValueToStringConverterConfig;
+  FValueToStringConverter := AValueToStringConverter;
   FTileSelectStyle:=ATileSelectStyle;
 end;
 
@@ -187,52 +188,8 @@ begin
 end;
 
 function TfrLonLat.GetLonLat: TDoublePoint;
-var
-  VLocalConverter: ILocalCoordConverter;
-  VTile: TPoint;
-  XYPoint: TDoublePoint;
-  VZoom: Byte;
 begin
-  Result := CEmptyDoublePoint;
-  case cbbCoordType.ItemIndex of
-   0: begin
-        if not(Edit2Digit(edtLat.Text,true,Result.y))or
-           not(Edit2Digit(edtLon.Text,false,Result.x)) then begin
-          ShowMessage(SAS_ERR_CoordinatesInput);
-        end;
-      end;
-   1: begin
-        try
-          XYPoint.X := strtoint(edtX.Text);
-          XYPoint.Y := strtoint(edtY.Text);
-        except
-          ShowMessage(SAS_ERR_CoordinatesInput);
-        end;
-        VLocalConverter :=  FViewPortState.GetStatic;
-        VZoom := cbbZoom.ItemIndex;
-        VLocalConverter.GeoConverter.CheckPixelPosFloat(XYPoint, VZoom, False);
-        Result := VLocalConverter.GetGeoConverter.PixelPosFloat2LonLat(XYPoint, VZoom);
-      end;
-   2: begin
-        try
-          VTile.X := strtoint(edtX.Text);
-          VTile.Y := strtoint(edtY.Text);
-        except
-          ShowMessage(SAS_ERR_CoordinatesInput);
-        end;
-        VLocalConverter :=  FViewPortState.GetStatic;
-        VZoom := cbbZoom.ItemIndex;
-
-        case FTileSelectStyle of
-          tssCenter: XYPoint := DoublePoint(VTile.X + 0.5, VTile.Y + 0.5);
-          tssTopLeft: XYPoint := DoublePoint(VTile);
-          tssBottomRight: XYPoint := DoublePoint(VTile.X + 1, VTile.Y + 1);
-        end;
-
-        VLocalConverter.GeoConverter.CheckTilePos(VTile, VZoom, False);
-        Result := VLocalConverter.GeoConverter.TilePosFloat2LonLat(XYPoint, VZoom);
-      end;
-  end;
+  Result := FCoordinates;
 end;
 
 procedure TfrLonLat.SetLonLat(const Value: TDoublePoint);
@@ -242,8 +199,8 @@ var
   CurrZoom:integer;
   VLocalConverter: ILocalCoordConverter;
 begin
-  FCoordinates:=Value;
-  VValueConverter := FValueToStringConverterConfig.GetStatic;
+  FCoordinates := Value;
+  VValueConverter := FValueToStringConverter.GetStatic;
   VLocalConverter :=  FViewPortState.GetStatic;
   CurrZoom := VLocalConverter.Zoom;
   cbbZoom.ItemIndex:=CurrZoom;
@@ -274,6 +231,71 @@ begin
         edtX.Text:=inttostr(XYPoint.x);
         edtY.Text:=inttostr(XYPoint.y);
       end;
+  end;
+end;
+
+function TfrLonLat.Validate: Boolean;
+var
+  VLocalConverter: ILocalCoordConverter;
+  VTile: TPoint;
+  XYPoint: TDoublePoint;
+  VZoom: Byte;
+  VLonLat: TDoublePoint;
+begin
+  VLonLat := CEmptyDoublePoint;
+  Result := True;
+  case cbbCoordType.ItemIndex of
+   0: begin
+        if not(Edit2Digit(edtLat.Text, true, VLonLat.y))or
+           not(Edit2Digit(edtLon.Text, false, VLonLat.x)) then begin
+          ShowMessage(SAS_ERR_CoordinatesInput);
+          Result := False;
+        end;
+        if Result then begin
+          VLocalConverter :=  FViewPortState.GetStatic;
+          VLocalConverter.GeoConverter.CheckLonLatPos(VLonLat);
+        end;
+      end;
+   1: begin
+        try
+          XYPoint.X := strtoint(edtX.Text);
+          XYPoint.Y := strtoint(edtY.Text);
+        except
+          ShowMessage(SAS_ERR_CoordinatesInput);
+          Result := False;
+        end;
+        if Result then  begin
+          VLocalConverter :=  FViewPortState.GetStatic;
+          VZoom := cbbZoom.ItemIndex;
+          VLocalConverter.GeoConverter.CheckPixelPosFloat(XYPoint, VZoom, False);
+          VLonLat := VLocalConverter.GetGeoConverter.PixelPosFloat2LonLat(XYPoint, VZoom);
+        end;
+      end;
+   2: begin
+        try
+          VTile.X := strtoint(edtX.Text);
+          VTile.Y := strtoint(edtY.Text);
+        except
+          ShowMessage(SAS_ERR_CoordinatesInput);
+          Result := False;
+        end;
+        if Result then begin
+          VLocalConverter :=  FViewPortState.GetStatic;
+          VZoom := cbbZoom.ItemIndex;
+
+          case FTileSelectStyle of
+            tssCenter: XYPoint := DoublePoint(VTile.X + 0.5, VTile.Y + 0.5);
+            tssTopLeft: XYPoint := DoublePoint(VTile);
+            tssBottomRight: XYPoint := DoublePoint(VTile.X + 1, VTile.Y + 1);
+          end;
+
+          VLocalConverter.GeoConverter.CheckTilePos(VTile, VZoom, False);
+          VLonLat := VLocalConverter.GeoConverter.TilePosFloat2LonLat(XYPoint, VZoom);
+        end;
+      end;
+  end;
+  if Result then begin
+    FCoordinates := VLonLat;
   end;
 end;
 

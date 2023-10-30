@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileIteratorByPolygon;
@@ -26,21 +26,22 @@ uses
   Types,
   t_GeoTypes,
   i_CoordConverter,
+  i_ProjectionInfo,
   i_TileIterator,
-  i_VectorItemProjected,
+  i_GeometryProjected,
   u_BaseInterfacedObject;
 
 type
   TTileIteratorByPolygon = class(TBaseInterfacedObject, ITileIterator)
   private
-    FProjected: IProjectedPolygon;
     FCurrent: TPoint;
     FTilesRect: TRect;
     FTilesTotal: Int64;
     // устанавливается только если один кусок (для скорости)
-    FSingleLine: IProjectedPolygonLine;
+    FSingleLine: IGeometryProjectedSinglePolygon;
+    FMultiProjected: IGeometryProjectedMultiPolygon;
     // кэш куска
-    FLastUsedLine: IProjectedPolygonLine;
+    FLastUsedLine: IGeometryProjectedSinglePolygon;
     FZoom: Byte;
     FGeoConverter: ICoordConverter;
   private
@@ -52,46 +53,56 @@ type
     function InternalIntersectPolygon(const ARect: TDoubleRect): Boolean;
   public
     constructor Create(
-      const AProjected: IProjectedPolygon
+      const AProjection: IProjectionInfo;
+      const AProjected: IGeometryProjectedPolygon
     );
   end;
 
 implementation
 
 uses
-  u_GeoFun;
+  SysUtils,
+  u_GeoFunc;
 
 { TTileIteratorByPolygon }
 
 constructor TTileIteratorByPolygon.Create(
-  const AProjected: IProjectedPolygon
+  const AProjection: IProjectionInfo;
+  const AProjected: IGeometryProjectedPolygon
 );
 var
   VBounds: TDoubleRect;
   VTile: TPoint;
 begin
   inherited Create;
-  FProjected := AProjected;
-  FLastUsedLine := nil;
-  if FProjected.Count > 0 then begin
-    // в зависимости от числа сегментов...
-    if (FProjected.Count=1) then begin
-      // ...ходим только по одной области
-      FSingleLine := FProjected.Item[0];
-    end else begin
-      // ...будем ходить в цикле
-      FSingleLine := nil;
-    end;
-
-    // общее ограничение и прочие параметры
-    with FProjected do begin
-      VBounds := Bounds;
-      with Projection do begin
-        FZoom := Zoom;
-        FGeoConverter := GeoConverter;
+  FZoom := AProjection.Zoom;
+  FGeoConverter := AProjection.GeoConverter;
+  if AProjected.IsEmpty then begin
+    FTilesTotal := 0;
+    FTilesRect := Rect(0, 0, 0, 0);
+    Assert(False);
+  end else begin
+    if Supports(AProjected, IGeometryProjectedSinglePolygon, FSingleLine) then begin
+      FMultiProjected := nil;
+    end else if Supports(AProjected, IGeometryProjectedMultiPolygon, FMultiProjected) then begin
+      // в зависимости от числа сегментов...
+      if (FMultiProjected.Count = 1) then begin
+        // ...ходим только по одной области
+        FSingleLine := FMultiProjected.Item[0];
+      end else begin
+        // ...будем ходить в цикле
+        FSingleLine := nil;
       end;
+    end else begin
+      Assert(False);
+      FSingleLine := nil;
+      FMultiProjected := nil;
+      FTilesTotal := 0;
+      FTilesRect := Rect(0, 0, 0, 0);
+      Exit;
     end;
-    
+    VBounds := AProjected.Bounds;
+
     FTilesRect :=
       RectFromDoubleRect(
         FGeoConverter.PixelRectFloat2TileRectFloat(VBounds, FZoom),
@@ -120,7 +131,7 @@ end;
 function TTileIteratorByPolygon.InternalIntersectPolygon(const ARect: TDoubleRect): Boolean;
 var
   i: Integer;
-  VLine: IProjectedPolygonLine;
+  VLine: IGeometryProjectedSinglePolygon;
 begin
   if (FSingleLine<>nil) then begin
     // один сегмент - только его и проверяем
@@ -141,8 +152,8 @@ begin
   end;
 
   // проверяем всё в цикле
-  for i := 0 to FProjected.Count-1 do begin
-    VLine := FProjected.GetItem(i);
+  for i := 0 to FMultiProjected.Count-1 do begin
+    VLine := FMultiProjected.GetItem(i);
     if (Pointer(VLine)<>Pointer(FLastUsedLine)) then
     if VLine.IsRectIntersectPolygon(ARect) then begin
       // нашлось

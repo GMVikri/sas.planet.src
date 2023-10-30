@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit fr_GPSConfig;
 
 interface
@@ -59,6 +79,8 @@ type
     CBSensorsBarAutoShow: TCheckBox;
     pnlGpsRight: TPanel;
     GroupBox3: TGroupBox;
+    CB_LocationAPI: TCheckBox;
+    CB_FlyOnTrack: TCheckBox;
     procedure btnGPSAutodetectCOMClick(Sender: TObject);
     procedure btnGPSSwitchClick(Sender: TObject);
   private
@@ -105,6 +127,7 @@ uses
 {$ifend}
   c_SensorsGUIDSimple,
   i_Sensor,
+  i_GPSModuleByCOMPortSettings,
   u_ListenerByEvent;
 
 {$R *.dfm}
@@ -162,8 +185,10 @@ end;
 
 destructor TfrGPSConfig.Destroy;
 begin
-  if FGpsSystem <> nil then begin
+  if Assigned(FGpsSystem) and Assigned(FConnectListener) then begin
     FGpsSystem.ConnectingNotifier.Remove(FConnectListener);
+  end;
+  if Assigned(FGpsSystem) and Assigned(FDisconnectListener) then begin
     FGpsSystem.DisconnectedNotifier.Remove(FDisconnectListener);
   end;
   FGpsSystem := nil;
@@ -194,14 +219,22 @@ begin
 
   FGPSConfig.LockWrite;
   try
-    FGPSConfig.ModuleConfig.ConnectionTimeout:=SE_ConnectionTimeout.Value;
-    FGPSConfig.ModuleConfig.NMEALog:=CB_GPSlogNmea.Checked;
-    FGPSConfig.ModuleConfig.Delay:=SpinEdit1.Value;
-    FGPSConfig.ModuleConfig.Port := GetCOMPortNumber(AnsiString(ComboBoxCOM.Text));
+    if CB_FlyOnTrack.Checked then begin
+      FGPSConfig.ModuleConfig.GPSOrigin := gpsoFlyOnTrack;
+    end else if CB_LocationAPI.Checked then begin
+      FGPSConfig.ModuleConfig.GPSOrigin := gpsoLocationAPI;
+    end else if CB_USBGarmin.Checked then begin
+      FGPSConfig.ModuleConfig.GPSOrigin := gpsoGarmin;
+    end else begin
+      FGPSConfig.ModuleConfig.GPSOrigin := gpsoNMEA;
+    end;
+    FGPSConfig.ModuleConfig.ConnectionTimeout := SE_ConnectionTimeout.Value;
+    FGPSConfig.ModuleConfig.LowLevelLog := CB_GPSlogNmea.Checked;
+    FGPSConfig.ModuleConfig.Delay := SpinEdit1.Value;
+    FGPSConfig.ModuleConfig.Port := GetCOMPortNumber(ComboBoxCOM.Text);
     FGPSConfig.ModuleConfig.BaudRate:=StrToint(ComboBoxBoudRate.Text);
     FGPSConfig.WriteLog[ttPLT]:=CB_GPSlogPLT.Checked;
     FGPSConfig.WriteLog[ttGPX]:=CB_GPSlogGPX.Checked;
-    FGPSConfig.ModuleConfig.USBGarmin:=CB_USBGarmin.Checked;
     FGPSConfig.ModuleConfig.AutodetectCOMOnConnect:=CB_GPSAutodetectCOMOnConnect.Checked;
     FGPSConfig.ModuleConfig.AutodetectCOMFlags:=Self.AutodetectCOMFlags;
   finally
@@ -233,13 +266,15 @@ begin
   FGPSConfig.LockRead;
   try
     SE_ConnectionTimeout.Value:=FGPSConfig.ModuleConfig.ConnectionTimeout;
-    CB_GPSlogNmea.Checked:=FGPSConfig.ModuleConfig.NMEALog;
+    CB_GPSlogNmea.Checked:=FGPSConfig.ModuleConfig.LowLevelLog;
     SpinEdit1.Value:=FGPSConfig.ModuleConfig.Delay;
     ComboBoxCOM.Text:= 'COM' + IntToStr(FGPSConfig.ModuleConfig.Port);
     ComboBoxBoudRate.Text:=inttostr(FGPSConfig.ModuleConfig.BaudRate);
     CB_GPSlogPLT.Checked:=FGPSConfig.WriteLog[ttPLT];
     CB_GPSlogGPX.Checked:=FGPSConfig.WriteLog[ttGPX];
-    CB_USBGarmin.Checked:=FGPSConfig.ModuleConfig.USBGarmin;
+    CB_USBGarmin.Checked := (gpsoGarmin = FGPSConfig.ModuleConfig.GPSOrigin);
+    CB_LocationAPI.Checked := (gpsoLocationAPI = FGPSConfig.ModuleConfig.GPSOrigin);
+    CB_FlyOnTrack.Checked := (gpsoFlyOnTrack = FGPSConfig.ModuleConfig.GPSOrigin);
     CB_GPSAutodetectCOMOnConnect.Checked:=FGPSConfig.ModuleConfig.AutodetectCOMOnConnect;
     VFlags:=FGPSConfig.ModuleConfig.AutodetectCOMFlags;
   finally

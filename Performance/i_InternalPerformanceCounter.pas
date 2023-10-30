@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,17 +14,13 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_InternalPerformanceCounter;
 
 interface
-
-uses
-  ActiveX,
-  i_IDList;
 
 type
   TInternalPerformanceCounterContext = Int64;
@@ -43,6 +39,12 @@ type
     function GetTotalTime: TDateTime;
     property TotalTime: TDateTime read GetTotalTime;
 
+    function GetCounterInMain: Cardinal;
+    property CounterInMain: Cardinal read GetCounterInMain;
+
+    function GetTotalTimeInMain: TDateTime;
+    property TotalTimeInMain: TDateTime read GetTotalTimeInMain;
+
     function GetMaxTime: TDateTime;
     property MaxTime: TDateTime read GetMaxTime;
 
@@ -52,26 +54,8 @@ type
 
   IInternalPerformanceCounter = interface
     ['{2D5EE758-A5EA-467D-A679-C3CD1B116973}']
-    function GetId: Integer;
-    property Id: Integer read GetId;
-
-    function GetName: string;
-    property Name: string read GetName;
-
     function StartOperation: TInternalPerformanceCounterContext;
     procedure FinishOperation(const AContext: TInternalPerformanceCounterContext);
-
-    function GetCounter: Cardinal;
-    property Counter: Cardinal read GetCounter;
-
-    function GetTotalTime: TDateTime;
-    property TotalTime: TDateTime read GetTotalTime;
-
-    function GetMaxTime: TDateTime;
-    property MaxTime: TDateTime read GetMaxTime;
-
-    function GetMinTime: TDateTime;
-    property MinTime: TDateTime read GetMinTime;
 
     function GetStaticData: IInternalPerformanceCounterStaticData;
   end;
@@ -83,15 +67,8 @@ type
 
   IInternalPerformanceCounterList = interface
     ['{75567269-AD8D-443F-AA45-9336C9890719}']
-    function GetName: string;
-    property Name: string read GetName;
-
-    function GetStaticDataList: IIDInterfaceList;
-    procedure AppendStaticDataToList(const ADataList: IIDInterfaceList);
-    function GetEunm: IEnumUnknown;
     function CreateAndAddNewCounter(const AName: string): IInternalPerformanceCounter;
     function CreateAndAddNewSubList(const AName: string): IInternalPerformanceCounterList;
-    procedure AddSubList(const ASubList: IInternalPerformanceCounterList);
   end;
 
 implementation

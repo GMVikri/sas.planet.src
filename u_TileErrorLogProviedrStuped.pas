@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileErrorLogProviedrStuped;
@@ -42,7 +42,6 @@ type
     procedure LogError(const AValue: ITileErrorInfo);
   public
     constructor Create;
-    destructor Destroy; override;
   end;
 
 implementation
@@ -56,15 +55,11 @@ uses
 constructor TTileErrorLogProviedrStuped.Create;
 begin
   inherited Create;
-  FCS := MakeSyncRW_Var(Self, False);
-  FNotifier := TNotifierBase.Create;
-end;
-
-destructor TTileErrorLogProviedrStuped.Destroy;
-begin
-  FNotifier := nil;
-  FCS := nil;
-  inherited;
+  FCS := GSync.SyncVariable.Make(Self.ClassName);
+  FNotifier :=
+    TNotifierBase.Create(
+      GSync.SyncVariable.Make(Self.ClassName + 'Notifier')
+    );
 end;
 
 function TTileErrorLogProviedrStuped.GetLastErrorInfo: ITileErrorInfo;

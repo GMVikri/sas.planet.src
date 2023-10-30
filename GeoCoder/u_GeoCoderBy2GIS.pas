@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GeoCoderBy2GIS;
@@ -24,6 +24,7 @@ interface
 
 uses
   Classes,
+  i_InterfaceListSimple,
   i_NotifierOperation,
   i_LocalCoordConverter,
   i_DownloadRequest,
@@ -43,23 +44,24 @@ type
       const AResult: IDownloadResultOk;
       const ASearch: WideString;
       const ALocalConverter: ILocalCoordConverter
-    ): IInterfaceList; override;
+    ): IInterfaceListSimple; override;
   public
   end;
 
 implementation
 
 uses
-  forms,
   XMLIntf,
   XMLDoc,
   SysUtils,
+  ALString,
   t_GeoTypes,
   i_CoordConverter,
   i_GeoCoder,
+  i_VectorDataItemSimple,
+  u_InterfaceListSimple,
   u_ResStrings,
-  u_GeoTostr,
-  u_GeoCodePlacemark;
+  u_GeoToStrFunc;
 
 { TGeoCoderBy2GIS }
 
@@ -69,7 +71,7 @@ function TGeoCoderBy2GIS.ParseResultToPlacemarksList(
   const AResult: IDownloadResultOk;
   const ASearch: WideString;
   const ALocalConverter: ILocalCoordConverter
-): IInterfaceList;
+): IInterfaceListSimple;
 var
   Stream: TMemoryStream;
   Node: IXMLNode;
@@ -78,18 +80,18 @@ var
   VPoint: TDoublePoint;
   VDesc: string;
   VFullDesc: string;
-  VPlace: IGeoCodePlacemark;
-  VList: IInterfaceList;
+  VPlace: IVectorDataItem;
+  VList: IInterfaceListSimple;
   VFormatSettings: TFormatSettings;
-  XMLDocument: TXMLDocument;
+  XMLDocument: IXMLDocument;
 begin
   if AResult.Data.Size <= 0 then begin
     raise EParserError.Create(SAS_ERR_EmptyServerResponse);
   end;
   VFormatSettings.DecimalSeparator := '.';
-  VList := TInterfaceList.Create;
+  VList := TInterfaceListSimple.Create;
+  XMLDocument := TXMLDocument.Create(nil);
   Stream := TMemoryStream.Create;
-  XMLDocument := TXMLDocument.Create(application);
   try
     Stream.Write(AResult.Data.Buffer^, AResult.Data.Size);
     XMLDocument.LoadFromStream(Stream);
@@ -105,10 +107,10 @@ begin
             VPoint.Y := StrToFloat(PlacemarkNode.ChildNodes.FindNode('lat').Text, VFormatSettings);
             VDesc := PlacemarkNode.ChildNodes.FindNode('city_name').Text + ', ' +
               PlacemarkNode.ChildNodes.FindNode('address').text;
-            VFullDesc := 'http://sasgis.ru/stat/2GIS/2gis.php?id=' + PlacemarkNode.ChildNodes.FindNode('id').Text +
+            VFullDesc := 'http://sasgis.org/stat/2GIS/2gis.php?id=' + PlacemarkNode.ChildNodes.FindNode('id').Text +
               '&hash=' + PlacemarkNode.ChildNodes.FindNode('hash').Text;
             if (AddressNode <> nil) then begin
-              VPlace := TGeoCodePlacemark.Create(VPoint, AddressNode.Text, VDesc, VFullDesc, 4);
+              VPlace := PlacemarkFactory.Build(VPoint, AddressNode.Text, VDesc, VFullDesc, 4);
               VList.Add(VPlace);
             end;
           except
@@ -119,7 +121,6 @@ begin
     end;
     Result := VList;
   finally
-    XMLDocument.Free;
     Stream.Free;
   end;
 end;
@@ -151,8 +152,8 @@ begin
   Result :=
     PrepareRequestByURL(
       'http://catalog.api.2gis.ru/search?what=' + URLEncode(AnsiToUtf8(VSearch)) +
-      '&point=' + R2StrPoint(ALocalConverter.GetCenterLonLat.x) + ',' + R2StrPoint(ALocalConverter.GetCenterLonLat.y) +
-      '&radius=' + inttostr(VRadius) +
+      '&point=' + R2AnsiStrPoint(ALocalConverter.GetCenterLonLat.x) + ',' + R2AnsiStrPoint(ALocalConverter.GetCenterLonLat.y) +
+      '&radius=' + ALinttostr(VRadius) +
       '&page=1&pagesize=50&key=ruihvk0699&version=1.3&sort=relevance&output=xml'
     );
 end;

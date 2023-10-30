@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_MarkEditPoint;
@@ -33,14 +33,16 @@ uses
   StdCtrls,
   Buttons,
   Spin,
-  GR32,
   u_CommonFormAndFrameParents,
   i_LanguageManager,
   i_PathConfig,
   i_LocalCoordConverterChangeable,
   i_ValueToStringConverter,
   i_MarkPicture,
-  i_MarksSimple,
+  i_GeometryLonLatFactory,
+  i_VectorDataItemSimple,
+  i_Appearance,
+  i_AppearanceOfMarkFactory,
   i_MarkFactory,
   i_MarkCategoryDB,
   fr_MarkDescription,
@@ -92,9 +94,14 @@ type
     procedure btnShadowColorClick(Sender: TObject);
     procedure FormShow(Sender: TObject);
     procedure btnSetAsTemplateClick(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure imgIconMouseDown(Sender: TObject);
   private
+    FGeometryFactory: IGeometryLonLatFactory;
+    FSourceMark: IVectorDataItem;
     FCategoryDB: IMarkCategoryDB;
+    FAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
+    FPictureList: IMarkPictureList;
     FMarkFactory: IMarkFactory;
     frMarkDescription: TfrMarkDescription;
     frLonLatPoint: TfrLonLat;
@@ -102,30 +109,37 @@ type
     frSelectPicture: TfrPictureSelectFromList;
     frSelectedPicture: TfrSelectedPicture;
     procedure SelectImageFromList(Sender: TObject);
+    function MakeAppearance: IAppearance;
   public
     constructor Create(
       const ALanguageManager: ILanguageManager;
       const AMediaPath: IPathConfig;
+      const AGeometryFactory: IGeometryLonLatFactory;
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const AMarkFactory: IMarkFactory;
       const ACategoryDB: IMarkCategoryDB;
       const APictureList: IMarkPictureList;
       const AViewPortState: ILocalCoordConverterChangeable;
-      const AValueToStringConverterConfig: IValueToStringConverterConfig
+      const AValueToStringConverter: IValueToStringConverterChangeable
     ); reintroduce;
     destructor Destroy; override;
     function EditMark(
-      const AMark: IMarkPoint;
+      const AMark: IVectorDataItem;
       const AIsNewMark: Boolean;
       var AVisible: Boolean
-    ): IMarkPoint;
+    ): IVectorDataItem;
   end;
 
 implementation
 
 uses
+  GR32,
   t_GeoTypes,
   i_MarkTemplate,
-  i_MarksFactoryConfig,
+  i_AppearanceOfVectorItem,
+  i_GeometryLonLat,
+  i_Category,
+  i_MarkFactoryConfig,
   u_ResStrings;
 
 {$R *.dfm}
@@ -133,23 +147,28 @@ uses
 constructor TfrmMarkEditPoint.Create(
   const ALanguageManager: ILanguageManager;
   const AMediaPath: IPathConfig;
+  const AGeometryFactory: IGeometryLonLatFactory;
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const AMarkFactory: IMarkFactory;
   const ACategoryDB: IMarkCategoryDB;
   const APictureList: IMarkPictureList;
   const AViewPortState: ILocalCoordConverterChangeable;
-  const AValueToStringConverterConfig: IValueToStringConverterConfig
+  const AValueToStringConverter: IValueToStringConverterChangeable
 );
 begin
   inherited Create(ALanguageManager);
   FCategoryDB := ACategoryDB;
+  FGeometryFactory := AGeometryFactory;
+  FAppearanceOfMarkFactory := AAppearanceOfMarkFactory;
   FMarkFactory := AMarkFactory;
+  FPictureList := APictureList;
 
   frMarkDescription := TfrMarkDescription.Create(ALanguageManager, AMediaPath);
   frLonLatPoint :=
     TfrLonLat.Create(
       ALanguageManager,
       AViewPortState,
-      AValueToStringConverterConfig,
+      AValueToStringConverter,
       tssCenter
     );
   frMarkCategory :=
@@ -177,58 +196,95 @@ begin
 end;
 
 function TfrmMarkEditPoint.EditMark(
-  const AMark: IMarkPoint;
+  const AMark: IVectorDataItem;
   const AIsNewMark: Boolean;
   var AVisible: Boolean
-): IMarkPoint;
+): IVectorDataItem;
 var
   VLonLat:TDoublePoint;
+  VAppearanceCaption: IAppearancePointCaption;
+  VAppearanceIcon: IAppearancePointIcon;
+  VPicIndex: Integer;
+  VPic: IMarkPicture;
+  VCategory: ICategory;
+  VPoint: IGeometryLonLatPoint;
+  VMarkWithCategory: IVectorDataItemWithCategory;
 begin
+  FSourceMark := AMark;
   frMarkDescription.Description:='';
   frSelectPicture.Visible := False;
   frSelectPicture.Parent := Self;
-  frSelectPicture.Picture := AMark.Pic;
 
   frSelectedPicture.Parent := pnlImage;
-  frSelectedPicture.Picture := AMark.Pic;
+
+  if Supports(AMark.Appearance, IAppearancePointIcon, VAppearanceIcon) then begin
+    if Assigned(VAppearanceIcon.Pic) then begin
+      VPic := VAppearanceIcon.Pic;
+    end else begin
+      if VAppearanceIcon.PicName = '' then begin
+        VPic := FPictureList.GetDefaultPicture;
+      end else begin
+        VPicIndex := FPictureList.GetIndexByName(VAppearanceIcon.PicName);
+        if VPicIndex >= 0 then begin
+          VPic := FPictureList.Get(VPicIndex);
+        end else begin
+          VPic := nil;
+        end;
+      end;
+    end;
+    frSelectedPicture.Picture := VPic;
+    frSelectPicture.Picture := VPic;
+    seIconSize.Value := VAppearanceIcon.MarkerSize;
+  end else begin
+    frSelectedPicture.Picture := nil;
+    seIconSize.Value := 0;
+  end;
 
   edtName.Text:=AMark.Name;
   frMarkDescription.Description:=AMark.Desc;
-  seFontSize.Value:=AMark.FontSize;
-  seIconSize.Value:=AMark.MarkerSize;
-  seTransp.Value:=100-round(AlphaComponent(AMark.TextColor)/255*100);
-  clrbxTextColor.Selected:=WinColor(AMark.TextColor);
-  clrbxShadowColor.Selected:=WinColor(AMark.TextBgColor);
+
+  if Supports(AMark.Appearance, IAppearancePointCaption, VAppearanceCaption) then begin
+    seFontSize.Value := VAppearanceCaption.FontSize;
+    seTransp.Value := 100-round(AlphaComponent(VAppearanceCaption.TextColor)/255*100);
+    clrbxTextColor.Selected := WinColor(VAppearanceCaption.TextColor);
+    clrbxShadowColor.Selected := WinColor(VAppearanceCaption.TextBgColor);
+  end else begin
+    seFontSize.Value := 0;
+    seTransp.Value := 0;
+    clrbxTextColor.Selected := WinColor(clBlack32);
+    clrbxShadowColor.Selected := WinColor(clWhite32);
+  end;
   chkVisible.Checked:= AVisible;
-  frMarkCategory.Init(AMark.Category);
+  VCategory := nil;
+  if Supports(AMark.MainInfo, IVectorDataItemWithCategory, VMarkWithCategory) then begin
+    VCategory := VMarkWithCategory.Category;
+  end;
+  frMarkCategory.Init(VCategory);
   try
     if AIsNewMark then begin
       Caption:=SAS_STR_AddNewMark;
     end else begin
       Caption:=SAS_STR_EditMark;
     end;
-    frLonLatPoint.LonLat := AMark.Point;
+    frLonLatPoint.LonLat := (AMark.Geometry as IGeometryLonLatPoint).Point;
     Self.PopupParent := Application.MainForm;
     if ShowModal=mrOk then begin
       VLonLat := frLonLatPoint.LonLat;
+      VPoint := FGeometryFactory.CreateLonLatPoint(VLonLat);
       Result :=
-        FMarkFactory.ModifyPoint(
-          AMark,
+        FMarkFactory.CreateMark(
+          VPoint,
           edtName.Text,
-          frSelectPicture.Picture,
-          frMarkCategory.GetCategory,
           frMarkDescription.Description,
-          VLonLat,
-          SetAlpha(Color32(clrbxTextColor.Selected),round(((100-seTransp.Value)/100)*256)),
-          SetAlpha(Color32(clrbxShadowColor.Selected),round(((100-seTransp.Value)/100)*256)),
-          seFontSize.Value,
-          seIconSize.Value
+          frMarkCategory.GetCategory,
+          MakeAppearance
         );
       AVisible := chkVisible.Checked;
     end else begin
       Result := nil;
     end;
   finally
+    FSourceMark := nil;
     frMarkCategory.Clear;
   end;
 end;
@@ -257,22 +313,13 @@ procedure TfrmMarkEditPoint.btnSetAsTemplateClick(Sender: TObject);
 var
   VConfig: IMarkPointTemplateConfig;
   VTemplate: IMarkTemplatePoint;
-  VPicName: string;
 begin
   if MessageBox(handle, pchar('Set as default for new marks?'), pchar(SAS_MSG_coution), 36) = IDYES then begin
     VConfig := FMarkFactory.Config.PointTemplateConfig;
-    VPicName := '';
-    if frSelectPicture.Picture <> nil then begin
-      VPicName := frSelectPicture.Picture.GetName;
-    end;
     VTemplate :=
       VConfig.CreateTemplate(
-        VPicName,
-        frMarkCategory.GetCategory,
-        SetAlpha(Color32(clrbxTextColor.Selected),round(((100-seTransp.Value)/100)*256)),
-        SetAlpha(Color32(clrbxShadowColor.Selected),round(((100-seTransp.Value)/100)*256)),
-        seFontSize.Value,
-        seIconSize.Value
+        MakeAppearance,
+        frMarkCategory.GetCategory
       );
     VConfig.DefaultTemplate := VTemplate;
   end;
@@ -281,6 +328,14 @@ end;
 procedure TfrmMarkEditPoint.btnShadowColorClick(Sender: TObject);
 begin
  if ColorDialog1.Execute then clrbxShadowColor.Selected:=ColorDialog1.Color;
+end;
+
+procedure TfrmMarkEditPoint.FormCloseQuery(Sender: TObject; var CanClose:
+    Boolean);
+begin
+  if ModalResult = mrOk then begin
+    CanClose := frLonLatPoint.Validate;
+  end;
 end;
 
 procedure TfrmMarkEditPoint.imgIconMouseDown(Sender: TObject);
@@ -295,6 +350,35 @@ begin
     frSelectPicture.Visible := True;
     frSelectPicture.SetFocus;
   end;
+end;
+
+function TfrmMarkEditPoint.MakeAppearance: IAppearance;
+var
+  VPic: IMarkPicture;
+  VPicName: string;
+  VAppearanceIcon: IAppearancePointIcon;
+begin
+  VPic := frSelectedPicture.Picture;
+  VPicName := '';
+  if Assigned(VPic) then begin
+    VPicName := VPic.GetName;
+  end else begin
+    if Assigned(FSourceMark) then begin
+      if Supports(FSourceMark.Appearance, IAppearancePointIcon, VAppearanceIcon) then begin
+        VPicName := VAppearanceIcon.PicName;
+      end;
+    end;
+  end;
+
+  Result :=
+    FAppearanceOfMarkFactory.CreatePointAppearance(
+      SetAlpha(Color32(clrbxTextColor.Selected),round(((100-seTransp.Value)/100)*256)),
+      SetAlpha(Color32(clrbxShadowColor.Selected),round(((100-seTransp.Value)/100)*256)),
+      seFontSize.Value,
+      VPicName,
+      frSelectPicture.Picture,
+      seIconSize.Value
+    );
 end;
 
 procedure TfrmMarkEditPoint.SelectImageFromList(Sender: TObject);

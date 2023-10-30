@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ShortcutManager;
@@ -25,7 +25,7 @@ interface
 uses
   Classes,
   TB2Item,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_ConfigDataProvider,
   i_ConfigDataWriteProvider,
   i_ShortCutSingleConfig;
@@ -36,12 +36,12 @@ type
     FIgnoredItems: TList;
     FItemsList: IInterfaceList;
     procedure LoadItems(
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       Menu: TTBCustomItem
     );
   public
     constructor Create(
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       AMainMenu: TTBCustomItem;
       AIgnoredItems: TList
     );
@@ -64,7 +64,7 @@ uses
 { TShortcutManager }
 
 constructor TShortcutManager.Create(
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   AMainMenu: TTBCustomItem;
   AIgnoredItems: TList
 );
@@ -147,7 +147,7 @@ begin
 end;
 
 procedure TShortcutManager.LoadItems(
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   Menu: TTBCustomItem
 );
 var
@@ -159,7 +159,7 @@ begin
     VMenuItem := Menu.Items[i];
     if not (VMenuItem is TTBSeparatorItem) then begin
       if (FIgnoredItems = nil) or (FIgnoredItems.IndexOf(VMenuItem) < 0) then begin
-        if Assigned(VMenuItem.OnClick) then begin
+        if Assigned(VMenuItem.OnClick) or (VMenuItem.Count = 0) then begin
           VShortCutInfo := TShortCutSingleConfig.Create(ABitmapFactory, VMenuItem);
           FItemsList.Add(VShortCutInfo);
         end;

@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ArchiveReadWrite7Zip;
@@ -117,15 +117,18 @@ begin
   inherited Create;
   FOwnStream := False;
   FStream := AStream;
+  FArch := CreateArchive(AArchiveType);
 end;
 
 destructor TArchiveReadBy7Zip.Destroy;
 begin
-  FArch.Close;
-  if FOwnStream then begin
-    FStream.Free;
+  if Assigned(FArch) then begin
+    FArch.Close;
   end;
-  inherited Destroy;
+  if FOwnStream then begin
+    FreeAndNil(FStream);
+  end;
+  inherited;
 end;
 
 function TArchiveReadBy7Zip.CreateArchive(
@@ -160,7 +163,7 @@ begin
       Result := GetItemByIndex(I, VItemName);
       Break;
     end;
-  end; 
+  end;
 end;
 
 function TArchiveReadBy7Zip.GetItemNameByIndex(const AItemIndex: Integer): string;
@@ -221,11 +224,13 @@ end;
 
 destructor TArchiveWriteBy7Zip.Destroy;
 begin
-  FArch.SaveToStream(FStream);
-  if FOwnStream then begin
-    FStream.Free;
+  if Assigned(FArch) and Assigned(FStream) then begin
+    FArch.SaveToStream(FStream);
   end;
-  inherited Destroy;
+  if FOwnStream then begin
+    FreeAndNil(FStream);
+  end;
+  inherited;
 end;
 
 function TArchiveWriteBy7Zip.CreateArchive(

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ZmpInfo;
@@ -30,8 +30,9 @@ uses
   i_ConfigDataProvider,
   i_LanguageListStatic,
   i_MapVersionInfo,
+  i_MapVersionFactory,
   i_BinaryDataListStatic,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_ContentTypeSubst,
   i_TileDownloadRequestBuilderConfig,
   i_TileDownloaderConfig,
@@ -41,7 +42,6 @@ uses
   i_CoordConverterFactory,
   i_ContentTypeManager,
   i_MapAbilitiesConfig,
-  i_MapAttachmentsInfo,
   i_SimpleTileStorageConfig,
   i_ZmpConfig,
   i_ZmpInfo,
@@ -69,18 +69,18 @@ type
       const AConfig: IConfigDataProvider;
       const AConfigIni: IConfigDataProvider;
       const AConfigIniParams: IConfigDataProvider;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       Apnum: Integer
     );
     function CreateDefaultIcon(
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       Apnum: Integer
     ): IBitmap32Static;
     procedure LoadIcons(
       const AContentTypeManager: IContentTypeManager;
       const AConfig: IConfigDataProvider;
       const AConfigIniParams: IConfigDataProvider;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       Apnum: Integer
     );
     procedure LoadUIParams(
@@ -107,7 +107,7 @@ type
       const AGUID: TGUID;
       const ALanguageManager: ILanguageManager;
       const AContentTypeManager: IContentTypeManager;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       const AConfig: IConfigDataProvider;
       const AConfigIni: IConfigDataProvider;
       const AConfigIniParams: IConfigDataProvider;
@@ -118,6 +118,7 @@ type
   TZmpInfo = class(TBaseInterfacedObject, IZmpInfo)
   private
     FGUID: TGUID;
+    FIsLayer: Boolean;
     FLayerZOrder: Integer;
     FLicense: IStringByLanguage;
     FFileName: string;
@@ -132,7 +133,6 @@ type
     FAbilities: IMapAbilitiesConfigStatic;
     FEmptyTileSamples: IBinaryDataListStatic;
     FBanTileSamples: IBinaryDataListStatic;
-    FMapAttachmentsInfo: IMapAttachmentsInfo;
     FStorageConfig: ISimpleTileStorageConfigStatic;
 
     FZmpConfig: IZmpConfig;
@@ -142,31 +142,31 @@ type
   private
     procedure LoadConfig(
       const ACoordConverterFactory: ICoordConverterFactory;
+      const AVersionFactory: IMapVersionFactory;
       const ALanguageManager: ILanguageManager
     );
     procedure LoadCropConfig(const AConfig: IConfigDataProvider);
     procedure LoadAbilities(const AConfig: IConfigDataProvider);
     procedure LoadStorageConfig(const AConfig: IConfigDataProvider);
     function LoadGUID(const AConfig: IConfigDataProvider): TGUID;
-    procedure LoadVersion(const AConfig: IConfigDataProvider);
+    procedure LoadVersion(
+      const AFactory: IMapVersionFactory;
+      const AConfig: IConfigDataProvider
+    );
     function GetBinaryListByConfig(const AConfig: IConfigDataProvider): IBinaryDataListStatic;
     procedure LoadSamples(const AConfig: IConfigDataProvider);
-    procedure LoadAttachmentsInfo(
-      const AConfig: IConfigDataProvider;
-      const ALanguageManager: ILanguageManager
-    );
     procedure LoadProjectionInfo(
       const AConfig: IConfigDataProvider;
       const ACoordConverterFactory: ICoordConverterFactory
     );
     procedure LoadTileRequestBuilderConfig(
-      const ACoordConverterFactory: ICoordConverterFactory;
       const AConfig: IConfigDataProvider
     );
     procedure LoadTileDownloaderConfig(const AConfig: IConfigDataProvider);
   private
     { IZmpInfo }
     function GetGUID: TGUID;
+    function GetIsLayer: Boolean;
     function GetGUI: IZmpInfoGUI;
     function GetLayerZOrder: Integer;
     function GetLicense: IStringByLanguage;
@@ -183,14 +183,14 @@ type
     function GetBanTileSamples: IBinaryDataListStatic;
     function GetStorageConfig: ISimpleTileStorageConfigStatic;
     function GetDataProvider: IConfigDataProvider;
-    function GetMapAttachmentsInfo: IMapAttachmentsInfo;
   public
     constructor Create(
       const AZmpConfig: IZmpConfig;
       const ALanguageManager: ILanguageManager;
       const ACoordConverterFactory: ICoordConverterFactory;
       const AContentTypeManager: IContentTypeManager;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const AVersionFactory: IMapVersionFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       const AFileName: string;
       const AConfig: IConfigDataProvider;
       Apnum: Integer
@@ -206,7 +206,7 @@ implementation
 
 uses
   Types,
-  ALfcnString,
+  ALString,
   GR32,
   gnugettext,
   c_ZeroGUID,
@@ -214,6 +214,7 @@ uses
   i_StringListStatic,
   i_BitmapTileSaveLoad,
   i_ContentTypeInfo,
+  i_TileStorageAbilities,
   u_BinaryDataListStatic,
   u_StringByLanguageWithStaticList,
   u_TileDownloadRequestBuilderConfig,
@@ -221,9 +222,8 @@ uses
   u_TilePostDownloadCropConfigStatic,
   u_ContentTypeSubstByList,
   u_MapAbilitiesConfigStatic,
+  u_TileStorageAbilities,
   u_SimpleTileStorageConfigStatic,
-  u_MapVersionInfo,
-  u_MapAttachmentsInfo,
   u_ResStrings;
 
 // common subroutine
@@ -277,7 +277,7 @@ constructor TZmpInfoGUI.Create(
   const AGUID: TGUID;
   const ALanguageManager: ILanguageManager;
   const AContentTypeManager: IContentTypeManager;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   const AConfig: IConfigDataProvider;
   const AConfigIni: IConfigDataProvider;
   const AConfigIniParams: IConfigDataProvider;
@@ -301,7 +301,7 @@ begin
 end;
 
 function TZmpInfoGUI.CreateDefaultIcon(
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   Apnum: Integer
 ): IBitmap32Static;
 var
@@ -321,7 +321,7 @@ begin
     VBitmap.RenderText(VPos.X, VPos.Y, VNameDef, 2, clBlack32);
     Result :=
       ABitmapFactory.Build(
-        Point(VBitmap.Width, VBitmap.Height),
+        Types.Point(VBitmap.Width, VBitmap.Height),
         VBitmap.Bits
       )
   finally
@@ -380,7 +380,7 @@ procedure TZmpInfoGUI.LoadConfig(
   const AConfig: IConfigDataProvider;
   const AConfigIni: IConfigDataProvider;
   const AConfigIniParams: IConfigDataProvider;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   Apnum: Integer
 );
 begin
@@ -390,7 +390,7 @@ begin
 end;
 
 function UpdateBMPTransp(
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   AMaskColor: TColor32;
   const ABitmap: IBitmap32Static
 ): IBitmap32Static;
@@ -422,7 +422,7 @@ function GetBitmap(
   const AContentTypeManager: IContentTypeManager;
   const AConfig: IConfigDataProvider;
   const AConfigIniParams: IConfigDataProvider;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   const ADefName: string;
   const AIdent: string
 ): IBitmap32Static;
@@ -459,7 +459,7 @@ procedure TZmpInfoGUI.LoadIcons(
   const AContentTypeManager: IContentTypeManager;
   const AConfig: IConfigDataProvider;
   const AConfigIniParams: IConfigDataProvider;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   Apnum: Integer
 );
 begin
@@ -564,7 +564,8 @@ constructor TZmpInfo.Create(
   const ALanguageManager: ILanguageManager;
   const ACoordConverterFactory: ICoordConverterFactory;
   const AContentTypeManager: IContentTypeManager;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const AVersionFactory: IMapVersionFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   const AFileName: string;
   const AConfig: IConfigDataProvider;
   Apnum: Integer
@@ -582,7 +583,7 @@ begin
   if FConfigIniParams = nil then begin
     raise EZmpParamsNotFound.Create(_('Not found PARAMS section in zmp'));
   end;
-  LoadConfig(ACoordConverterFactory, ALanguageManager);
+  LoadConfig(ACoordConverterFactory, AVersionFactory, ALanguageManager);
   FGUI :=
     TZmpInfoGUI.Create(
       FGUID,
@@ -672,6 +673,11 @@ begin
   Result := FGUID;
 end;
 
+function TZmpInfo.GetIsLayer: Boolean;
+begin
+  Result := FIsLayer;
+end;
+
 function TZmpInfo.GetLayerZOrder: Integer;
 begin
   Result := FLayerZOrder;
@@ -680,11 +686,6 @@ end;
 function TZmpInfo.GetLicense: IStringByLanguage;
 begin
   Result := FLicense;
-end;
-
-function TZmpInfo.GetMapAttachmentsInfo: IMapAttachmentsInfo;
-begin
-  Result := FMapAttachmentsInfo;
 end;
 
 function TZmpInfo.GetStorageConfig: ISimpleTileStorageConfigStatic;
@@ -719,124 +720,35 @@ end;
 
 procedure TZmpInfo.LoadAbilities(const AConfig: IConfigDataProvider);
 var
-  VIsLayer: Boolean;
   VIsShowOnSmMap: Boolean;
   VUseDownload: Boolean;
 begin
-  VIsLayer := AConfig.ReadBool('asLayer', False);
   VIsShowOnSmMap := AConfig.ReadBool('CanShowOnSmMap', True);
   VUseDownload := AConfig.ReadBool('UseDwn', True);
 
   FAbilities :=
     TMapAbilitiesConfigStatic.Create(
-      VIsLayer,
       VIsShowOnSmMap,
       VUseDownload
     );
 end;
 
-procedure TZmpInfo.LoadAttachmentsInfo(
-  const AConfig: IConfigDataProvider;
-  const ALanguageManager: ILanguageManager
-);
-var
-  VParams: IConfigDataProvider;
-  VGUID: TGUID;
-  VSL_Names: TStringList;
-  i, VMaxSubIndex: Integer;
-  VParseNumberAfter: String;
-  VSL_NameInCache, VSL_Ext, VSL_DefUrlBase, VSL_ContentType: TStringList;
-  VStrVal, VNameInCacheDefault: String;
-  VEnabled, VUseDwn, VUseDel: Boolean;
-begin
-  // params in special section
-  VParams := AConfig.GetSubItem('AttachmentsInfo');
-
-  if not Assigned(VParams) then begin
-    FMapAttachmentsInfo := nil;
-    Exit;
-  end;
-
-  // gui params
-  VGUID := LoadGUID(VParams);
-  VSL_Names := InternalMakeStringListByLanguage(ALanguageManager.LanguageList, VParams, 'name', '');
-
-  // count of sub-items for single attachment
-  VMaxSubIndex := VParams.ReadInteger('MaxSubIndex', 0);
-  VParseNumberAfter := VParams.ReadString('ParseNumberAfter', '');
-  VUseDwn := VParams.ReadBool('UseDwn', FALSE);
-  VUseDel := VParams.ReadBool('UseDel', FALSE);
-
-  // noway
-  VSL_NameInCache := nil;
-  VSL_Ext := nil;
-  VSL_DefUrlBase := nil;
-  VSL_ContentType := nil;
-
-  if (VMaxSubIndex >= 0) and (System.Length(VParseNumberAfter) > 0) then begin
-    // make containers and obtain default values
-    VSL_NameInCache := TStringList.Create;
-    VNameInCacheDefault := VParams.ReadString('NameInCache', '');
-    if (System.Length(VNameInCacheDefault) > 0) then begin
-      VNameInCacheDefault := ExpandFileName(VNameInCacheDefault);
-    end;
-    VSL_NameInCache.AddObject(VNameInCacheDefault, TObject(Pointer(Ord(VParams.ReadBool('Enabled', FALSE)))));
-
-    VSL_Ext := TStringList.Create;
-    VSL_Ext.Add(LowerCase(VParams.ReadString('Ext', '')));
-
-    VSL_DefUrlBase := TStringList.Create;
-    VSL_DefUrlBase.Add(VParams.ReadString('DefUrlBase', ''));
-
-    VSL_ContentType := TStringList.Create;
-    VSL_ContentType.Add(VParams.ReadString('ContentType', ''));
-
-    // other values (by index)
-    if VMaxSubIndex > 0 then begin
-      for i := 1 to VMaxSubIndex do begin
-        VStrVal := ExpandFileName(VParams.ReadString('NameInCache' + IntToStr(i), VNameInCacheDefault));
-        VEnabled := VParams.ReadBool('Enabled' + IntToStr(i), (VSL_NameInCache.Objects[0] <> nil));
-        VSL_NameInCache.AddObject(VStrVal, TObject(Pointer(Ord(VEnabled))));
-
-        VStrVal := LowerCase(VParams.ReadString('Ext' + IntToStr(i), VSL_Ext[0]));
-        VSL_Ext.Add(VStrVal);
-
-        VStrVal := VParams.ReadString('DefUrlBase' + IntToStr(i), VSL_DefUrlBase[0]);
-        VSL_DefUrlBase.Add(VStrVal);
-
-        VStrVal := VParams.ReadString('ContentType' + IntToStr(i), VSL_ContentType[0]);
-        VSL_ContentType.Add(VStrVal);
-      end;
-    end;
-  end;
-
-  // make object (VSL_* will be destroyed in object's destructor)
-  FMapAttachmentsInfo := TMapAttachmentsInfo.Create(VGUID,
-    VMaxSubIndex,
-    VParseNumberAfter,
-    VSL_NameInCache,
-    VSL_Ext,
-    VSL_Names,
-    VSL_DefUrlBase,
-    VSL_ContentType,
-    VUseDwn, VUseDel);
-end;
-
 procedure TZmpInfo.LoadConfig(
   const ACoordConverterFactory: ICoordConverterFactory;
+  const AVersionFactory: IMapVersionFactory;
   const ALanguageManager: ILanguageManager
 );
 begin
   FGUID := LoadGUID(FConfigIniParams);
-  LoadVersion(FConfigIniParams);
+  FIsLayer := FConfigIniParams.ReadBool('asLayer', False);
+  LoadVersion(AVersionFactory, FConfigIniParams);
   LoadProjectionInfo(FConfigIni, ACoordConverterFactory);
-  LoadTileRequestBuilderConfig(ACoordConverterFactory, FConfigIniParams);
+  LoadTileRequestBuilderConfig(FConfigIniParams);
   LoadTileDownloaderConfig(FConfigIniParams);
   LoadCropConfig(FConfigIniParams);
   LoadStorageConfig(FConfigIniParams);
   LoadAbilities(FConfigIniParams);
   LoadSamples(FConfig);
-  LoadAttachmentsInfo(FConfigIni, ALanguageManager);
   FContentTypeSubst := TContentTypeSubstByList.Create(FConfigIniParams);
 end;
 
@@ -921,6 +833,7 @@ var
   VMemCacheCapacity: Integer;
   VMemCacheTTL: Cardinal;
   VMemCacheClearStrategy: Integer;
+  VStorageAbilities: ITileStorageAbilities;
 begin
   VNameInCache := AConfig.ReadString('NameInCache', '');
   VCacheTypeCode := AConfig.ReadInteger('CacheType', 0);
@@ -928,31 +841,26 @@ begin
   VMemCacheCapacity := AConfig.ReadInteger('MemCacheCapacity', FZmpConfig.MemCacheCapacity);
   VMemCacheTTL := AConfig.ReadInteger('MemCacheTTL', FZmpConfig.MemCacheTTL);
   VMemCacheClearStrategy := AConfig.ReadInteger('MemCacheClearStrategy', FZmpConfig.MemCacheClearStrategy);
-  // c_File_Cache_Id_GE and c_File_Cache_Id_GC
-  if (VCacheTypeCode = 5) or (VCacheTypeCode = 8) then begin
-    VTileFileExt := '.jpg';
-    VIsReadOnly := True;
-    VAllowDelete := False;
-    VAllowAdd := False;
-    VAllowReplace := False;
-  end else begin
-    VTileFileExt := LowerCase(AConfig.ReadString('Ext', '.jpg'));
-    VIsReadOnly := False;
-    VAllowDelete := True;
-    VAllowAdd := True;
-    VAllowReplace := True;
-  end;
+  VTileFileExt := LowerCase(AConfig.ReadString('Ext', '.jpg'));
+  VIsReadOnly := AConfig.ReadBool('IsReadOnly', False);
+  VAllowDelete := not VIsReadOnly;
+  VAllowAdd := not VIsReadOnly;
+  VAllowReplace := not VIsReadOnly;
+
+  VStorageAbilities :=
+    TTileStorageAbilities.Create(
+      VIsReadOnly,
+      VAllowAdd,
+      VAllowDelete,
+      VAllowReplace
+    );
 
   FStorageConfig :=
     TSimpleTileStorageConfigStatic.Create(
-      FGeoConvert,
       VCacheTypeCode,
       VNameInCache,
       VTileFileExt,
-      VIsReadOnly,
-      VAllowDelete,
-      VAllowAdd,
-      VAllowReplace,
+      VStorageAbilities,
       VUseMemCache,
       VMemCacheCapacity,
       VMemCacheTTL,
@@ -965,19 +873,23 @@ var
   VUseDownload: Boolean;
   VAllowUseCookie: Boolean;
   VIgnoreMIMEType: Boolean;
+  VDetectMIMEType: Boolean;
   VDefaultMIMEType: string;
   VExpectedMIMETypes: string;
   VWaitInterval: Cardinal;
   VMaxConnectToServerCount: Cardinal;
   VIteratorSubRectSize: TPoint;
+  VRestartDownloaderOnMemCacheTTL: Boolean;
   fL: TStringList;
 begin
   VUseDownload := AConfig.ReadBool('UseDwn', True);
   VAllowUseCookie := AConfig.ReadBool('AllowUseCookie', False);
   VIgnoreMIMEType := AConfig.ReadBool('IgnoreContentType', False);
+  VDetectMIMEType := AConfig.ReadBool('DetectContentType', False);
   VDefaultMIMEType := AConfig.ReadString('DefaultContentType', 'image/jpg');
   VExpectedMIMETypes := AConfig.ReadString('ContentType', 'image/jpg');
   VWaitInterval := AConfig.ReadInteger('Sleep', 0);
+  VRestartDownloaderOnMemCacheTTL := AConfig.ReadBool('RestartDownloadOnMemCacheTTL', False);
   VMaxConnectToServerCount :=
     AConfig.ReadInteger(
       'MaxConnectToServerCount',
@@ -1001,20 +913,20 @@ begin
       VWaitInterval,
       VMaxConnectToServerCount,
       VIgnoreMIMEType,
+      VDetectMIMEType,
       VExpectedMIMETypes,
       VDefaultMIMEType,
-      VIteratorSubRectSize
+      VIteratorSubRectSize,
+      VRestartDownloaderOnMemCacheTTL
     );
 end;
 
 procedure TZmpInfo.LoadTileRequestBuilderConfig(
-  const ACoordConverterFactory: ICoordConverterFactory;
   const AConfig: IConfigDataProvider
 );
 var
   VUrlBase: AnsiString;
   VRequestHead: AnsiString;
-  VCoordConverter: ICoordConverter;
   VIsUseDownloader: Boolean;
   VDefaultProjConverterArgs: AnsiString;
 begin
@@ -1022,7 +934,6 @@ begin
   VUrlBase := AConfig.ReadAnsiString('URLBase', VUrlBase);
   VRequestHead := AConfig.ReadAnsiString('RequestHead', '');
   VRequestHead := ALStringReplace(VRequestHead, '\r\n', #13#10, [rfIgnoreCase, rfReplaceAll]);
-  VCoordConverter := ACoordConverterFactory.GetCoordConverterByConfig(AConfig);
   VIsUseDownloader := AConfig.ReadBool('IsUseDownloaderInScript', False);
   VDefaultProjConverterArgs := AConfig.ReadAnsiString('Proj4Args', '');
 
@@ -1031,19 +942,19 @@ begin
       VUrlBase,
       VRequestHead,
       VIsUseDownloader,
-      VDefaultProjConverterArgs,
-      VCoordConverter
+      VDefaultProjConverterArgs
     );
 end;
 
-procedure TZmpInfo.LoadVersion(const AConfig: IConfigDataProvider);
+procedure TZmpInfo.LoadVersion(
+  const AFactory: IMapVersionFactory;
+  const AConfig: IConfigDataProvider
+);
 var
   VVersion: String;
-  VShowPrevVersion: Boolean;
 begin
   VVersion := AConfig.ReadString('Version', '');
-  VShowPrevVersion := AConfig.ReadBool('ShowPrevVersion', True);
-  FVersionConfig := TMapVersionInfo.Create(VVersion, VShowPrevVersion);
+  FVersionConfig := AFactory.CreateByStoreString(VVersion);
 end;
 
 end.

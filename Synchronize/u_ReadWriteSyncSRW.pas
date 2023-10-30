@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_ReadWriteSyncSRW;
 
 interface
@@ -5,7 +25,6 @@ interface
 uses
   Windows,
   SysUtils,
-  u_ReadWriteSyncAbstract,
   i_ReadWriteSyncFactory;
 
 type
@@ -47,7 +66,7 @@ type
     );
   end;
 
-  TSynchronizerSRW = class(TReadWriteSyncAbstract, IReadWriteSync)
+  TSynchronizerSRW = class(TInterfacedObject, IReadWriteSync)
   private
     FDll: ISyncronizerSRWDll;
     FLock: RTL_SRWLOCK;
@@ -59,7 +78,6 @@ type
     procedure EndWrite;
   public
     constructor Create(
-      const AName: AnsiString;
       const ADll: ISyncronizerSRWDll
     );
   end;
@@ -96,6 +114,11 @@ constructor TSyncronizerSRWDll.Create(
   AReleaseSharedPtr: Pointer
 );
 begin
+  Assert(Assigned(AInitializePtr));
+  Assert(Assigned(AAcquireExclusivePtr));
+  Assert(Assigned(AReleaseExclusivePtr));
+  Assert(Assigned(AAcquireSharedPtr));
+  Assert(Assigned(AReleaseSharedPtr));
   inherited Create;
   FInitializePtr := AInitializePtr;
   FAcquireExclusivePtr := AAcquireExclusivePtr;
@@ -136,12 +159,11 @@ end;
 { TSynchronizerRtlResource }
 
 constructor TSynchronizerSRW.Create(
-  const AName: AnsiString;
   const ADll: ISyncronizerSRWDll
 );
 begin
   Assert(ADll <> nil);
-  inherited Create(AName);
+  inherited Create;
   FDll := ADll;
   FDll.Initialize(@FLock);
 end;
@@ -181,11 +203,7 @@ end;
 function TSynchronizerSRWFactory.Make(
   const AName: AnsiString): IReadWriteSync;
 begin
-  Result :=
-    TSynchronizerSRW.Create(
-      AName,
-      FDll
-    );
+  Result := TSynchronizerSRW.Create(FDll);
 end;
 
 function MakeSynchronizerSRWFactory: IReadWriteSyncFactory;

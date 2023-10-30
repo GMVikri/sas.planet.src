@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GeoCoderListBase;
@@ -24,87 +24,59 @@ interface
 
 uses
   SysUtils,
-  ActiveX,
-  i_Notifier,
   i_GeoCoderList,
-  i_GUIDSet,
+  i_InterfaceListStatic,
   u_BaseInterfacedObject;
 
 type
-  TGeoCoderListBase = class(TBaseInterfacedObject, IGeoCoderList)
+  TGeoCoderListStatic = class(TBaseInterfacedObject, IGeoCoderListStatic)
   private
-    FList: IGUIDInterfaceSet;
-    FCS: IReadWriteSync;
-    FAddNotifier: INotifierInternal;
-  protected
-    procedure Add(const AItem: IGeoCoderListEntity);
+    FList: IInterfaceListStatic;
   private
-    function GetGUIDEnum: IEnumGUID;
-    function Get(const AGUID: TGUID): IGeoCoderListEntity;
-    function GetAddNotifier: INotifier;
+    function GetCount: Integer;
+    function GetItem(const AIndex: Integer): IGeoCoderListEntity;
+    function GetIndexByGUID(const AGUID: TGUID): Integer;
   public
-    constructor Create;
-    destructor Destroy; override;
+    constructor Create(
+      const AList: IInterfaceListStatic
+    );
   end;
 
 implementation
 
-uses
-  u_Synchronizer,
-  u_Notifier,
-  u_GUIDInterfaceSet;
+{ TGeoCoderListStatic }
 
-{ TGeoCoderListBase }
-
-constructor TGeoCoderListBase.Create;
+constructor TGeoCoderListStatic.Create(const AList: IInterfaceListStatic);
 begin
+  Assert(Assigned(AList));
+  Assert(AList.Count > 0);
   inherited Create;
-  FCS := MakeSyncRW_Std(Self, TRUE);
-  FList := TGUIDInterfaceSet.Create(False);
-  FAddNotifier := TNotifierBase.Create;
+  FList := AList;
 end;
 
-destructor TGeoCoderListBase.Destroy;
+function TGeoCoderListStatic.GetCount: Integer;
 begin
-  FList := nil;
-  FCS := nil;
-  inherited;
+  Result := FList.Count;
 end;
 
-procedure TGeoCoderListBase.Add(const AItem: IGeoCoderListEntity);
+function TGeoCoderListStatic.GetIndexByGUID(const AGUID: TGUID): Integer;
+var
+  i: Integer;
 begin
-  FCS.BeginWrite;
-  try
-    FList.Add(AItem.GetGUID, AItem);
-  finally
-    FCS.EndWrite;
-  end;
-  FAddNotifier.Notify(nil);
-end;
-
-function TGeoCoderListBase.Get(const AGUID: TGUID): IGeoCoderListEntity;
-begin
-  FCS.BeginRead;
-  try
-    Result := IGeoCoderListEntity(FList.GetByGUID(AGUID));
-  finally
-    FCS.EndRead;
+  Result := -1;
+  for i := 0 to FList.Count - 1 do begin
+    if IsEqualGUID(IGeoCoderListEntity(FList.Items[i]).GUID, AGUID) then begin
+      Result := i;
+      Break;
+    end;
   end;
 end;
 
-function TGeoCoderListBase.GetAddNotifier: INotifier;
+function TGeoCoderListStatic.GetItem(
+  const AIndex: Integer
+): IGeoCoderListEntity;
 begin
-  Result := FAddNotifier;
-end;
-
-function TGeoCoderListBase.GetGUIDEnum: IEnumGUID;
-begin
-  FCS.BeginRead;
-  try
-    Result := FList.GetGUIDEnum;
-  finally
-    FCS.EndRead;
-  end;
+  Result := IGeoCoderListEntity(FList.Items[AIndex]);
 end;
 
 end.

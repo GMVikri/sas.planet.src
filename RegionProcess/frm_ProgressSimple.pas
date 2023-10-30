@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_ProgressSimple;
@@ -36,7 +36,7 @@ uses
   i_ListenerTime,
   i_MapViewGoto,
   i_RegionProcess,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   i_RegionProcessProgressInfo,
   i_NotifierOperation,
   u_CommonFormAndFrameParents, Buttons;
@@ -60,7 +60,7 @@ type
     FTimerNoifier: INotifierTime;
     FMapGoto: IMapViewGoto;
     FRegionProcess: IRegionProcess;
-    FPolygon: ILonLatPolygon;
+    FPolygon: IGeometryLonLatPolygon;
 
     FRarProgress: TRarProgress;
     FAppClosingListener: IListener;
@@ -77,7 +77,7 @@ type
       const AProgressInfo: IRegionProcessProgressInfo;
       const ARegionProcess: IRegionProcess;
       const AMapGoto: IMapViewGoto;
-      const APolygon: ILonLatPolygon
+      const APolygon: IGeometryLonLatPolygon
     ); reintroduce;
     destructor Destroy; override;
   end;
@@ -98,7 +98,7 @@ constructor TfrmProgressSimple.Create(
   const AProgressInfo: IRegionProcessProgressInfo;
   const ARegionProcess: IRegionProcess;
   const AMapGoto: IMapViewGoto;
-  const APolygon: ILonLatPolygon
+  const APolygon: IGeometryLonLatPolygon
 );
 begin
   Assert(AAppClosingNotifier <> nil);
@@ -163,13 +163,13 @@ end;
 
 destructor TfrmProgressSimple.Destroy;
 begin
-  if FAppClosingNotifier <> nil then begin
+  if Assigned(FAppClosingNotifier) and Assigned(FAppClosingListener) then begin
     FAppClosingNotifier.Remove(FAppClosingListener);
     FAppClosingNotifier := nil;
     FAppClosingListener := nil;
   end;
 
-  if FTimerNoifier <> nil then begin
+  if Assigned(FTimerNoifier) and Assigned(FTimerListener) then begin
     FTimerNoifier.Remove(FTimerListener);
     FTimerNoifier := nil;
     FTimerListener := nil;

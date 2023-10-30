@@ -1,4 +1,24 @@
-unit u_TileStorageTypeGE;
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
+unit u_TileStorageTypeGE deprecated;
 
 interface
 
@@ -6,36 +26,22 @@ uses
   i_CoordConverter,
   i_ContentTypeInfo,
   i_ContentTypeManager,
-  i_MapVersionConfig,
+  i_MapVersionFactory,
+  i_ConfigDataProvider,
   i_TileStorage,
+  i_TileStorageAbilities,
   i_TileInfoBasicMemCache,
   i_TileStorageTypeConfig,
   u_TileStorageTypeBase;
 
 type
-  TTileStorageTypeGE = class(TTileStorageTypeBase)
-  private
-    FContentTypeManager: IContentTypeManager;
-  protected
-    function BuildStorage(
-      const AGeoConverter: ICoordConverter;
-      const AMainContentType: IContentTypeInfoBasic;
-      const APath: string;
-      const ACacheTileInfo: ITileInfoBasicMemCache
-    ): ITileStorage; override;
-  public
-    constructor Create(
-      const AContentTypeManager: IContentTypeManager;
-      const AMapVersionFactory: IMapVersionFactory;
-      const AConfig: ITileStorageTypeConfig
-    );
-  end;
-
   TTileStorageTypeGC = class(TTileStorageTypeBase)
   private
     FContentTypeManager: IContentTypeManager;
   protected
-    function BuildStorage(
+    function BuildStorageInternal(
+      const AStorageConfigData: IConfigDataProvider;
+      const AForceAbilities: ITileStorageAbilities;
       const AGeoConverter: ICoordConverter;
       const AMainContentType: IContentTypeInfoBasic;
       const APath: string;
@@ -52,40 +58,8 @@ type
 implementation
 
 uses
-  u_TileStorageTypeAbilities,
+  u_TileStorageAbilities,
   u_TileStorageGE;
-
-{ TTileStorageTypeGE }
-
-constructor TTileStorageTypeGE.Create(
-  const AContentTypeManager: IContentTypeManager;
-  const AMapVersionFactory: IMapVersionFactory;
-  const AConfig: ITileStorageTypeConfig
-);
-begin
-  inherited Create(
-    TTileStorageTypeAbilitiesGE.Create,
-    AMapVersionFactory,
-    AConfig
-  );
-  FContentTypeManager := AContentTypeManager;
-end;
-
-function TTileStorageTypeGE.BuildStorage(
-  const AGeoConverter: ICoordConverter;
-  const AMainContentType: IContentTypeInfoBasic;
-  const APath: string;
-  const ACacheTileInfo: ITileInfoBasicMemCache
-): ITileStorage;
-begin
-  Result :=
-    TTileStorageGE.Create(
-      AGeoConverter,
-      APath,
-      GetMapVersionFactory,
-      FContentTypeManager
-    );
-end;
 
 { TTileStorageTypeGC }
 
@@ -94,16 +68,26 @@ constructor TTileStorageTypeGC.Create(
   const AMapVersionFactory: IMapVersionFactory;
   const AConfig: ITileStorageTypeConfig
 );
+var
+  VAbilities: ITileStorageTypeAbilities;
 begin
+  VAbilities :=
+    TTileStorageTypeAbilities.Create(
+      TTileStorageAbilities.Create(True, False, False, False),
+      True,
+      False
+    );
   inherited Create(
-    TTileStorageTypeAbilitiesGE.Create,
+    VAbilities,
     AMapVersionFactory,
     AConfig
   );
   FContentTypeManager := AContentTypeManager;
 end;
 
-function TTileStorageTypeGC.BuildStorage(
+function TTileStorageTypeGC.BuildStorageInternal(
+  const AStorageConfigData: IConfigDataProvider;
+  const AForceAbilities: ITileStorageAbilities;
   const AGeoConverter: ICoordConverter;
   const AMainContentType: IContentTypeInfoBasic;
   const APath: string;
@@ -112,6 +96,8 @@ function TTileStorageTypeGC.BuildStorage(
 begin
   Result :=
     TTileStorageGC.Create(
+      GetAbilities,
+      AForceAbilities,
       AGeoConverter,
       APath,
       GetMapVersionFactory,

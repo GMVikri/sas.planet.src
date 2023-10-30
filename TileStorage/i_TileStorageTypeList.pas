@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_TileStorageTypeList;
@@ -23,19 +23,18 @@ unit i_TileStorageTypeList;
 interface
 
 uses
-  ActiveX,
-  i_ConfigDataElement,
-  i_TileStorageType;
+  i_TileStorageTypeListItem;
 
 type
-  ITileStorageTypeList = interface(IConfigDataElement)
-    ['{42BD0720-3B8A-4F19-8208-C6E4105377DE}']
-    function GetDefault: ITileStorageType;
-    procedure SetDefaultByGUID(const AGUID: TGUID);
+  ITileStorageTypeListStatic = interface
+    ['{ED68474F-2167-419E-B812-7AF0E3B4E461}']
+    function GetCount: Integer;
+    property Count: Integer read GetCount;
 
-    function Get(const AGUID: TGUID): ITileStorageType;
-    function GetCanUseAsDefault(const AGUID: TGUID): Boolean;
-    function GetEnum: IEnumGUID;
+    function GetItem(AIndex: Integer): ITileStorageTypeListItem;
+    property Items[AIndex: Integer]: ITileStorageTypeListItem read GetItem;
+
+    function GetItemByCode(const ACode: Integer): ITileStorageTypeListItem;
   end;
 
 implementation

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_GPSRecorder;
@@ -25,7 +25,7 @@ interface
 uses
   t_GeoTypes,
   i_GPS,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   i_Changeable;
 
 type
@@ -47,7 +47,7 @@ type
     procedure ClearTrack;
     function IsEmpty: Boolean;
     function LastPoints(const AMaxCount: Integer): IEnumGPSTrackPoint;
-    function GetAllPoints: ILonLatPath;
+    function GetAllPoints: IGeometryLonLatLine;
   end;
 
   IGpsTrackRecorderInternal = interface(IGpsTrackRecorder)

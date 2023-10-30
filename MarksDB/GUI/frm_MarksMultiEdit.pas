@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_MarksMultiEdit;
@@ -30,10 +30,10 @@ uses
   StdCtrls,
   ExtCtrls,
   i_Category,
+  i_AppearanceOfMarkFactory,
   i_LanguageManager,
   i_ImportConfig,
   i_MarkFactory,
-  i_MarksDb,
   i_MarkCategoryDB,
   u_CommonFormAndFrameParents,
   fr_MarksGeneralOptions;
@@ -51,6 +51,7 @@ type
   public
     constructor Create(
       const ALanguageManager: ILanguageManager;
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const AMarkFactory: IMarkFactory;
       const ACategoryDB: IMarkCategoryDB
     ); reintroduce;
@@ -64,6 +65,7 @@ implementation
 
 constructor TfrmMarksMultiEdit.Create(
   const ALanguageManager: ILanguageManager;
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const AMarkFactory: IMarkFactory;
   const ACategoryDB: IMarkCategoryDB
 );
@@ -73,6 +75,7 @@ begin
   frMarksGeneralOptions:=
     TfrMarksGeneralOptions.Create(
       ALanguageManager,
+      AAppearanceOfMarkFactory,
       AMarkFactory,
       ACategoryDB,
       True,

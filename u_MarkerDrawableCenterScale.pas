@@ -1,20 +1,40 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MarkerDrawableCenterScale;
 
 interface
 
 uses
   i_BitmapMarker,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   u_MarkerDrawableByBitmapMarker;
 
 type
   TMarkerDrawableCenterScale = class(TMarkerDrawableByBitmapMarker)
   private
     function CreateBitmapMarker(
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     ): IBitmapMarker;
   public
-    constructor Create(const ABitmapFactory: IBitmap32StaticFactory);
+    constructor Create(const ABitmapFactory: IBitmap32BufferFactory);
   end;
 
 implementation
@@ -25,19 +45,19 @@ uses
   GR32,
   i_Bitmap32Static,
   u_BitmapMarker,
-  u_GeoFun;
+  u_GeoFunc;
 
 { TMarkerDrawableCenterScale }
 
 constructor TMarkerDrawableCenterScale.Create(
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create(CreateBitmapMarker(ABitmapFactory));
 end;
 
 function TMarkerDrawableCenterScale.CreateBitmapMarker(
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 ): IBitmapMarker;
 var
   VBitmap: TBitmap32;

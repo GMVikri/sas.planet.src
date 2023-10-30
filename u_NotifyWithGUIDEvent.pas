@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_NotifyWithGUIDEvent;
@@ -23,6 +23,7 @@ unit u_NotifyWithGUIDEvent;
 interface
 
 uses
+  SysUtils,
   i_Notifier,
   i_Listener,
   u_BaseInterfacedObject;
@@ -72,7 +73,7 @@ type
   private
     procedure NotifyByGUID(const AGUID: TGUID);
   public
-    constructor Create;
+    constructor Create(const ASync: IReadWriteSync);
   end;
 
 implementation
@@ -110,10 +111,10 @@ end;
 
 { TNotifierWithGUID }
 
-constructor TNotifierWithGUID.Create;
+constructor TNotifierWithGUID.Create(const ASync: IReadWriteSync);
 begin
   inherited Create;
-  FNotifier := TNotifierBase.Create;
+  FNotifier := TNotifierBase.Create(ASync);
 end;
 
 procedure TNotifierWithGUID.Add(const AListener: IListener);

@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_ReadWriteSyncAbstract;
 
 interface
@@ -8,20 +28,21 @@ uses
   i_ReadWriteSyncFactory;
 
 type
-  TReadWriteSyncAbstract = class(TInterfacedObject)
+  TSynchronizerFake = class(TInterfacedObject, IReadWriteSync)
   private
-    FName: AnsiString;
-  public
-    constructor Create(const AName: AnsiString);
+    procedure BeginRead;
+    procedure EndRead;
+    function BeginWrite: Boolean;
+    procedure EndWrite;
   end;
 
   TReadWriteSyncDebugWrapper = class(TInterfacedObject, IReadWriteSync)
   private
     FLock: IReadWriteSync;
-    FLockClassName: AnsiString;
-    FName: ShortString;
+    FLockClassName: string;
+    FName: string;
   protected
-    procedure DoDebugGlobalLocks(const AProcedure, AEvent: AnsiString);
+    procedure DoDebugGlobalLocks(const AProcedure, AEvent: string);
   private
     procedure BeginRead;
     procedure EndRead;
@@ -60,14 +81,6 @@ type
     destructor Destroy; override;
   end;
 
-  TSynchronizerFake = class(TReadWriteSyncAbstract, IReadWriteSync)
-  private
-    procedure BeginRead;
-    procedure EndRead;
-    function BeginWrite: Boolean;
-    procedure EndWrite;
-  end;
-
   TSynchronizerFakeFactory = class(TInterfacedObject, IReadWriteSyncFactory)
   private
     function Make(const AName: AnsiString): IReadWriteSync;
@@ -81,13 +94,13 @@ type
   TSynchronizerFactoryWithDebug = class(TInterfacedObject, IReadWriteSyncFactory)
   private
     FFactory: IReadWriteSyncFactory;
-    FLockClassName: AnsiString;
+    FLockClassName: string;
   private
     function Make(const AName: AnsiString): IReadWriteSync;
   public
     constructor Create(
       const AFactory: IReadWriteSyncFactory;
-      const ALockClassName: AnsiString
+      const ALockClassName: string
     );
   end;
 
@@ -134,14 +147,6 @@ implementation
 uses
   Windows;
 
-{ TReadWriteSyncAbstractSimple }
-
-constructor TReadWriteSyncAbstract.Create(const AName: AnsiString);
-begin
-  inherited Create;
-  FName := AName;
-end;
-
 { TSynchronizerFake }
 
 procedure TSynchronizerFake.BeginRead;
@@ -169,7 +174,7 @@ end;
 
 function TSynchronizerFakeFactory.Make(const AName: AnsiString): IReadWriteSync;
 begin
-  Result := TSynchronizerFake.Create(AName);
+  Result := TSynchronizerFake.Create;
 end;
 
 { TReadWriteSyncDebugWrapper }
@@ -183,8 +188,8 @@ begin
   Assert(ALock <> nil);
   inherited Create;
   FLock := ALock;
-  FLockClassName := ALockClassName;
-  FName := AName;
+  FLockClassName := string(ALockClassName);
+  FName := string(AName);
 end;
 
 procedure TReadWriteSyncDebugWrapper.BeginRead;
@@ -202,15 +207,15 @@ begin
 end;
 
 procedure TReadWriteSyncDebugWrapper.DoDebugGlobalLocks(const AProcedure,
-  AEvent: String);
+  AEvent: string);
 const
-  c_SEP: AnsiString = ', ' + Chr(VK_TAB);
+  c_SEP: string = ', ' + Chr(VK_TAB);
 var
-  VText: AnsiString;
+  VText: string;
 begin
   if (not DebugGlobalLocks_Enabled) then
     Exit;
-  VText := FLockClassName + ' at $'+ IntToHex(Integer(Pointer(Self)), 8)+' (from '+FName+')' + c_SEP + 'ThreadId=' + IntToStr(GetCurrentThreadId) + c_SEP +  AProcedure + c_SEP + AEvent;
+  VText := FLockClassName + ' at $'+ IntToHex(Integer(Pointer(Self)), 8)+' (from '+ FName+')' + c_SEP + 'ThreadId=' + IntToStr(GetCurrentThreadId) + c_SEP +  AProcedure + c_SEP + AEvent;
   OutputDebugString(PChar(VText));
 end;
 
@@ -337,7 +342,9 @@ end;
 { TSynchronizerFactoryWithDebug }
 
 constructor TSynchronizerFactoryWithDebug.Create(
-  const AFactory: IReadWriteSyncFactory; const ALockClassName: AnsiString);
+  const AFactory: IReadWriteSyncFactory;
+  const ALockClassName: string
+);
 begin
   Assert(AFactory <> nil);
   inherited Create;

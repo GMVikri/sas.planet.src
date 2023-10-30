@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ActiveMapConfig;
@@ -28,11 +28,13 @@ uses
   i_Notifier,
   i_Listener,
   i_MapTypes,
+  i_MapTypeSet,
   u_ConfigDataElementBase;
 
 type
   TMapTypeChangeableByNotifier = class(TConfigDataElementBaseEmptySaveLoad, IMapTypeChangeable)
   private
+    FIsAllowNil: Boolean;
     FMapsSet: IMapTypeSet;
     FStatic: IMapType;
   private
@@ -43,6 +45,7 @@ type
     function GetStatic: IMapType;
   public
     constructor Create(
+      const AIsAllowNil: Boolean;
       const AMainMapChangeNotyfier: INotifier;
       const AMapsSet: IMapTypeSet
     );
@@ -53,11 +56,13 @@ implementation
 
 uses
   ActiveX,
+  c_ZeroGUID,
   u_NotifyWithGUIDEvent;
 
 { TActiveMapConfigNew }
 
 constructor TMapTypeChangeableByNotifier.Create(
+  const AIsAllowNil: Boolean;
   const AMainMapChangeNotyfier: INotifier;
   const AMapsSet: IMapTypeSet
 );
@@ -68,21 +73,28 @@ begin
   Assert(AMainMapChangeNotyfier <> nil);
   Assert(AMapsSet <> nil);
   inherited Create;
+  FIsAllowNil := AIsAllowNil;
   FMapsSet := AMapsSet;
   FMainMapChangeNotyfier := AMainMapChangeNotyfier;
   FMainMapListener := TNotifyWithGUIDEventListener.Create(Self.OnMainMapChange);
   FMainMapChangeNotyfier.Add(FMainMapListener);
-  if FMapsSet.GetIterator.Next(1, VGUID, i) <> S_OK then begin
-    raise Exception.Create('Empty maps list');
+  if FIsAllowNil then begin
+    FStatic := nil;
+  end else begin
+    if FMapsSet.GetIterator.Next(1, VGUID, i) <> S_OK then begin
+      raise Exception.Create('Empty maps list');
+    end;
+    FStatic := FMapsSet.GetMapTypeByGUID(VGUID);
   end;
-  FStatic := FMapsSet.GetMapTypeByGUID(VGUID);
 end;
 
 destructor TMapTypeChangeableByNotifier.Destroy;
 begin
-  FMainMapChangeNotyfier.Remove(FMainMapListener);
-  FMainMapListener := nil;
-  FMainMapChangeNotyfier := nil;
+  if Assigned(FMainMapChangeNotyfier) and Assigned(FMainMapListener) then begin
+    FMainMapChangeNotyfier.Remove(FMainMapListener);
+    FMainMapListener := nil;
+    FMainMapChangeNotyfier := nil;
+  end;
   FMapsSet := nil;
   inherited;
 end;
@@ -104,10 +116,16 @@ var
 begin
   LockWrite;
   try
-    VGUID := FStatic.GUID;
+    VGUID := CGUID_Zero;
+    if Assigned(FStatic) then begin
+      VGUID := FStatic.GUID;
+    end;
     if not IsEqualGUID(VGUID, AGUID) then begin
-      VMapType := FMapsSet.GetMapTypeByGUID(AGUID);
-      if VMapType <> nil then begin
+      if IsEqualGUID(AGUID, CGUID_Zero) then begin
+        FStatic := nil;
+        SetChanged;
+      end else begin
+        VMapType := FMapsSet.GetMapTypeByGUID(AGUID);
         FStatic := VMapType;
         SetChanged;
       end;

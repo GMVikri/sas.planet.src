@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GPSModuleByVSAGPS;
@@ -37,7 +37,7 @@ uses
 {$if defined(VSAGPS_AS_DLL)}
   vsagps_public_dll,
 {$else}
-  vsagps_memory,
+  vsagps_public_memory,
   vsagps_object,
   vsagps_track_writer,
 {$ifend}
@@ -47,7 +47,7 @@ uses
   vsagps_public_device,
   vsagps_public_position,
   vsagps_public_trackpoint,
-  vsagps_public_sysutils,
+  vsagps_public_location_api,
   vsagps_public_unit_info;
 
 type
@@ -81,7 +81,7 @@ type
     FNotify_on_GLL: Boolean;
     FNotify_on_GSA: Boolean;
     FNotify_on_RMC: Boolean;
-    FGPSUnitInfo: AnsiString;
+    FGPSUnitInfo: string;
   private
     procedure GPSRecv_NMEA_GGA(const AUnitIndex: Byte; const pGGA: PNMEA_GGA);
     procedure GPSRecv_NMEA_GLL(const AUnitIndex: Byte; const pGLL: PNMEA_GLL);
@@ -93,6 +93,12 @@ type
 {$ifend}
     procedure GPSRecv_GARMIN_D800(const AUnitIndex: Byte; const pData: PD800_Pvt_Data_Type);
     procedure GPSRecv_GARMIN_MEAS(const AUnitIndex: Byte; const pData: Pcpo_all_sat_data);
+
+    procedure GPSRecv_LocationApi(
+      const AUnitIndex: Byte;
+      const dwPacketType: DWORD;
+      const APacket: Pointer
+    );
 
     procedure GPSRecv_LowLevel(const AUnitIndex: Byte;
                                const ADevType: DWORD;
@@ -126,7 +132,8 @@ type
     procedure InternalClearUnitInfo(const AUnitIndex: Byte);
     procedure InternalSetUnitInfo(const AUnitIndex: Byte;
                                   const AKind: TVSAGPS_UNIT_INFO_Kind;
-                                  const AValue: AnsiString);
+                                  const AValue: string
+                                  );
 
     procedure LockUnitInfo(const AUnitIndex: Byte);
     procedure UnlockUnitInfo(const AUnitIndex: Byte);
@@ -134,7 +141,7 @@ type
       const AUnitIndex: Byte;
       const ACommand: LongInt;
       const APointer: Pointer
-    ): AnsiString;
+    ): string;
   private
     procedure GPSDoStateChanged(const AUnitIndex: Byte;
                                 const ANewState: Tvsagps_GPSState);
@@ -143,7 +150,9 @@ type
     // called by device object when unit info changed
     procedure DoGPSUnitInfoChanged(const AUnitIndex: Byte;
                                    const AKind: TVSAGPS_UNIT_INFO_Kind;
-                                   const AValue: PAnsiChar);
+                                   const AValue: Pointer;
+                                   const AIsWide: Boolean
+                                   );
   protected
     procedure Connect(const AConfig: IGPSModuleByCOMPortSettings;
                       const ALogConfig: IGPSConfig); safecall;
@@ -173,9 +182,11 @@ uses
   DateUtils,
   Math,
   Classes,
+  ALString,
+  vsagps_public_sysutils,
+  t_GeoTypes,
   u_ResStrings,
-  u_ListenerByEvent,
-  t_GeoTypes;
+  u_ListenerByEvent;
 
 
 function rVSAGPS_GARMIN_D800_HANDLER(const pUserPointer: Pointer;
@@ -184,11 +195,11 @@ function rVSAGPS_GARMIN_D800_HANDLER(const pUserPointer: Pointer;
                                      const dwData_Size: DWORD;
                                      const pData: PD800_Pvt_Data_Type): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_GARMIN_D800(btUnitIndex,pData);
+    GPSRecv_GARMIN_D800(btUnitIndex, pData);
   end;
 end;
 
@@ -198,11 +209,11 @@ function rVSAGPS_GARMIN_MEAS_HANDLER(const pUserPointer: Pointer;
                                      const dwData_Size: DWORD;
                                      const pData: Pcpo_all_sat_data): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_GARMIN_MEAS(btUnitIndex,pData);
+    GPSRecv_GARMIN_MEAS(btUnitIndex, pData);
   end;
 end;
 
@@ -211,11 +222,11 @@ function rVSAGPS_NMEA_GGA_HANDLER(const pUserPointer: Pointer;
                                   const dwPacketType: DWORD;
                                   const pNmeaData: PNMEA_GGA): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_NMEA_GGA(btUnitIndex,pNmeaData);
+    GPSRecv_NMEA_GGA(btUnitIndex, pNmeaData);
   end;
 end;
 
@@ -224,11 +235,11 @@ function rVSAGPS_NMEA_GLL_HANDLER(const pUserPointer: Pointer;
                                   const dwPacketType: DWORD;
                                   const pNmeaData: PNMEA_GLL): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_NMEA_GLL(btUnitIndex,pNmeaData);
+    GPSRecv_NMEA_GLL(btUnitIndex, pNmeaData);
   end;
 end;
 
@@ -237,11 +248,11 @@ function rVSAGPS_NMEA_GSA_HANDLER(const pUserPointer: Pointer;
                                   const dwPacketType: DWORD;
                                   const pNmeaData: PNMEA_GSA): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_NMEA_GSA(btUnitIndex,pNmeaData);
+    GPSRecv_NMEA_GSA(btUnitIndex, pNmeaData);
   end;
 end;
 
@@ -250,11 +261,11 @@ function rVSAGPS_NMEA_GSV_HANDLER(const pUserPointer: Pointer;
                                   const dwPacketType: DWORD;
                                   const pNmeaData: PNMEA_GSV): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_NMEA_GSV(btUnitIndex,pNmeaData);
+    GPSRecv_NMEA_GSV(btUnitIndex, pNmeaData);
   end;
 end;
 
@@ -263,11 +274,11 @@ function rVSAGPS_NMEA_RMC_HANDLER(const pUserPointer: Pointer;
                                   const dwPacketType: DWORD;
                                   const pNmeaData: PNMEA_RMC): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_NMEA_RMC(btUnitIndex,pNmeaData);
+    GPSRecv_NMEA_RMC(btUnitIndex, pNmeaData);
   end;
 end;
 
@@ -277,11 +288,11 @@ function rVSAGPS_NMEA_VTG_HANDLER(const pUserPointer: Pointer;
                                   const dwPacketType: DWORD;
                                   const pNmeaData: PNMEA_VTG): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
-    GPSRecv_NMEA_VTG(btUnitIndex,pNmeaData);
+    GPSRecv_NMEA_VTG(btUnitIndex, pNmeaData);
   end;
 end;
 {$ifend}
@@ -291,10 +302,25 @@ function rLowLevelHandler(const pUserPointer: Pointer;
                           const dwDeviceType: DWORD;
                           const pPacket: Pointer): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     GPSRecv_LowLevel(btUnitIndex, dwDeviceType, pPacket);
+  end;
+end;
+
+function rLocationApi_Handler(
+  const pUserPointer: Pointer;
+  const btUnitIndex: Byte;
+  const dwPacketType: DWORD;
+  const pPacket: Pointer
+): DWORD; stdcall;
+begin
+  Result := 0;
+  if (nil<>pUserPointer) then
+  with TGPSModuleByVSAGPS(pUserPointer) do begin
+    InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
+    GPSRecv_LocationApi(btUnitIndex, dwPacketType, pPacket);
   end;
 end;
 
@@ -304,7 +330,7 @@ function rVSAGPS_TRACKPOINT_HANDLER(const pUserPointer: Pointer;
                                     const dwPacketType: DWORD;
                                     const pPacket: PSingleTrackPointData): DWORD; stdcall;
 begin
-  Result:=0;
+  Result := 0;
   if (nil<>pUserPointer) then
   with TGPSModuleByVSAGPS(pUserPointer) do begin
     InternalApplyCalcStatsFlag(btUnitIndex, (0<>(dwPacketType and vgpt_Allow_Stats)));
@@ -316,10 +342,17 @@ procedure rVSAGPS_UNIT_INFO_DLL_Proc(const pUserPointer: Pointer;
                                      const btUnitIndex: Byte;
                                      const dwGPSDevType: DWORD;
                                      const eKind: TVSAGPS_UNIT_INFO_Kind;
-                                     const szValue: PAnsiChar); stdcall;
+                                     const szValue: Pointer;
+                                     const AIsWide: Boolean
+                                     ); stdcall;
 begin
   if (nil<>pUserPointer) then
-    TGPSModuleByVSAGPS(pUserPointer).DoGPSUnitInfoChanged(btUnitIndex, eKind, szValue);
+    TGPSModuleByVSAGPS(pUserPointer).DoGPSUnitInfoChanged(
+      btUnitIndex,
+      eKind,
+      szValue,
+      AIsWide
+    );
 end;
 
 procedure rVSAGPS_GPSState_DLL_Proc(const pUserPointer: Pointer;
@@ -374,40 +407,41 @@ begin
 
   Clear_TVSAGPS_UNIT_INFO(@FVSAGPS_UNIT_INFO);
 
-  FConnectedUnitindex:=0;
-  FRecvTimeoutOccured:=FALSE;
+  FConnectedUnitindex := 0;
+  FRecvTimeoutOccured := FALSE;
 
   // notify if gps data changes
-  FNotify_on_GGA:=FALSE;
-  FNotify_on_GLL:=FALSE;
-  FNotify_on_GSA:=FALSE;
-  FNotify_on_RMC:=TRUE;
+  FNotify_on_GGA := FALSE;
+  FNotify_on_GLL := FALSE;
+  FNotify_on_GSA := FALSE;
+  FNotify_on_RMC := TRUE;
 
   ZeroMemory(@FGPSGPS_DevParams, sizeof(FGPSGPS_DevParams));
-  FGPSGPS_DevParams.wSize:=Sizeof(FGPSGPS_DevParams);
+  FGPSGPS_DevParams.wSize := Sizeof(FGPSGPS_DevParams);
   //FGPSGPS_DevParams.dwDeviceFlagsIn:=(dpdfi_ConnectingFromConnect or );
   //FGPSGPS_DevParams.pLowLevelHandler:=nil;
   //FGPSGPS_DevParams.pTrackPointHandler:=nil;
-  FGPSGPS_DevParams.pGARMIN_D800_HANDLER:=rVSAGPS_GARMIN_D800_HANDLER;
-  FGPSGPS_DevParams.pGARMIN_MEAS_HANDLER:=rVSAGPS_GARMIN_MEAS_HANDLER;
-  FGPSGPS_DevParams.pNMEA_GGA_HANDLER:=rVSAGPS_NMEA_GGA_HANDLER;
-  FGPSGPS_DevParams.pNMEA_GLL_HANDLER:=rVSAGPS_NMEA_GLL_HANDLER;
-  FGPSGPS_DevParams.pNMEA_GSA_HANDLER:=rVSAGPS_NMEA_GSA_HANDLER;
-  FGPSGPS_DevParams.pNMEA_GSV_HANDLER:=rVSAGPS_NMEA_GSV_HANDLER;
-  FGPSGPS_DevParams.pNMEA_RMC_HANDLER:=rVSAGPS_NMEA_RMC_HANDLER;
+  FGPSGPS_DevParams.pLocationApi_Handler := rLocationApi_Handler;
+  FGPSGPS_DevParams.pGARMIN_D800_HANDLER := rVSAGPS_GARMIN_D800_HANDLER;
+  FGPSGPS_DevParams.pGARMIN_MEAS_HANDLER := rVSAGPS_GARMIN_MEAS_HANDLER;
+  FGPSGPS_DevParams.pNMEA_GGA_HANDLER := rVSAGPS_NMEA_GGA_HANDLER;
+  FGPSGPS_DevParams.pNMEA_GLL_HANDLER := rVSAGPS_NMEA_GLL_HANDLER;
+  FGPSGPS_DevParams.pNMEA_GSA_HANDLER := rVSAGPS_NMEA_GSA_HANDLER;
+  FGPSGPS_DevParams.pNMEA_GSV_HANDLER := rVSAGPS_NMEA_GSV_HANDLER;
+  FGPSGPS_DevParams.pNMEA_RMC_HANDLER := rVSAGPS_NMEA_RMC_HANDLER;
 {$if defined(USE_NMEA_VTG)}
-  FGPSGPS_DevParams.pNMEA_VTG_HANDLER:=rVSAGPS_NMEA_VTG_HANDLER;
+  FGPSGPS_DevParams.pNMEA_VTG_HANDLER := rVSAGPS_NMEA_VTG_HANDLER;
 {$ifend}
 
 {$if defined(VSAGPS_AS_DLL)}
-  FVSAGPS_HANDLE:=VSAGPS_Create(Self, @rVSAGPS_GPSState_DLL_Proc, @rVSAGPS_GPSTimeout_DLL_Proc);
-  FVSAGPS_LOGGER:=nil;
+  FVSAGPS_HANDLE := VSAGPS_Create(Self, @rVSAGPS_GPSState_DLL_Proc, @rVSAGPS_GPSTimeout_DLL_Proc);
+  FVSAGPS_LOGGER := nil;
 {$else}
-  FVSAGPS_Object:=Tvsagps_object.Create;
-  FVSAGPS_Object.ALLDeviceUserPointer:=Self;
-  FVSAGPS_Object.OnGPSStateChanged:=rVSAGPS_GPSState_DLL_Proc;
-  FVSAGPS_Object.OnGPSTimeout:=rVSAGPS_GPSTimeout_DLL_Proc;
-  FVSAGPS_Logger:=nil;
+  FVSAGPS_Object := Tvsagps_object.Create;
+  FVSAGPS_Object.ALLDeviceUserPointer := Self;
+  FVSAGPS_Object.OnGPSStateChanged := rVSAGPS_GPSState_DLL_Proc;
+  FVSAGPS_Object.OnGPSTimeout := rVSAGPS_GPSTimeout_DLL_Proc;
+  FVSAGPS_Logger := nil;
 {$ifend}
 
   InternalPrepareLoggerParams;
@@ -419,11 +453,11 @@ end;
 
 destructor TGPSModuleByVSAGPS.Destroy;
 begin
-  if FSystemTime <> nil then begin
+  if Assigned(FSystemTime) and Assigned(FSystemTimeChangeListener) then begin
     FSystemTime.SystemTimeChangedNotifier.Remove(FSystemTimeChangeListener);
+    FSystemTimeChangeListener := nil;
     FSystemTime := nil;
   end;
-  FSystemTimeChangeListener := nil;
 
 {$if defined(VSAGPS_USE_DEBUG_STRING)}
   VSAGPS_DebugAnsiString('TGPSModuleByVSAGPS.Destroy: begin');
@@ -438,7 +472,7 @@ begin
 {$if defined(VSAGPS_AS_DLL)}
   if (nil<>FVSAGPS_HANDLE) then begin
     VSAGPS_Destroy(FVSAGPS_HANDLE);
-    FVSAGPS_HANDLE:=nil;
+    FVSAGPS_HANDLE := nil;
   end;
 {$else}
   FreeAndNil(FVSAGPS_Object);
@@ -478,30 +512,27 @@ end;
 procedure TGPSModuleByVSAGPS.Connect(const AConfig: IGPSModuleByCOMPortSettings;
                                      const ALogConfig: IGPSConfig);
 const
-  FlyOnTrackCFG='vsagps_fly-on-track.cfg';
+  CFlyOnTrackCFG = 'vsagps_fly-on-track.cfg';
 var
-  FGPSPortName: AnsiString;
+  VGPSOrigin: TGPSOrigin;
+  VGPSDevType: DWORD;
+  VGPSPortName: AnsiString;
 {$if defined(VSAGPS_AS_DLL)}
-  FszGPSPortName: PAnsiChar;
+  VszGPSPortName: PAnsiChar;
 {$ifend}
-  FGPSDevType: DWORD;
   VTimeout: DWORD;
   VFlyOnTrackSource: WideString;
   VTrackTypes: TVSAGPS_TrackTypes;
 
-  function _IsFlyOnTrackMode: Boolean;
-  begin
-    Result:=(0<Length(VFlyOnTrackSource));
-  end;
-
   procedure _LoadFlyOnTrackSource;
   var sl: TStringList;
   begin
-    if FileExists(FlyOnTrackCFG) then begin
-      sl:=TStringList.Create;
+    if FileExists(CFlyOnTrackCFG) then begin
+      sl := TStringList.Create;
       try
-        sl.LoadFromFile(FlyOnTrackCFG);
-        VFlyOnTrackSource:=sl.Text;
+        sl.LoadFromFile(CFlyOnTrackCFG);
+        // TODO: check encoding
+        VFlyOnTrackSource := sl.Text;
       finally
         sl.Free;
       end;
@@ -509,119 +540,134 @@ var
   end;
 
 begin
-  FRecvTimeoutOccured:=FALSE;
+  Assert(Assigned(AConfig));
+  Assert(Assigned(ALogConfig));
+
+  VGPSOrigin := AConfig.GPSOrigin;
+
+  FRecvTimeoutOccured := FALSE;
   LockConnect;
   try
     if FConnectState <> gs_DoneDisconnected then
       Exit;
 
-{$if defined(VSAGPS_USE_DEBUG_STRING)}
-    VSAGPS_DebugAnsiString('TGPSModuleByVSAGPS.Connect: begin');
-{$ifend}
-
-    VFlyOnTrackSource:='';
-    _LoadFlyOnTrackSource;
-
 {$if defined(VSAGPS_AS_DLL)}
-    FszGPSPortName:=nil;
+    VszGPSPortName := nil;
 {$ifend}
 
-    // logger (create suspended)
-    if (not _IsFlyOnTrackMode) then
+    VFlyOnTrackSource := '';
+    if (gpsoFlyOnTrack = VGPSOrigin) then begin
+      _LoadFlyOnTrackSource;
+      if (0 = Length(VFlyOnTrackSource)) then begin
+        raise Exception.Create(SAS_MSG_NoFlyOnTrackSource);
+      end;
+    end else begin
+      // logger (create suspended)
       InternalStartLogger(AConfig, ALogConfig);
+    end;
 
     // timeouts
-    VTimeout:=AConfig.ConnectionTimeout;
+    VTimeout := AConfig.ConnectionTimeout;
     if (VTimeout>$FFFF) then
-      VTimeout:=$FFFF;
-    FGPSGPS_DevParams.wConnectionTimeoutSec:=VTimeout;
+      VTimeout := $FFFF;
+    FGPSGPS_DevParams.wConnectionTimeoutSec := VTimeout;
     if (VTimeout>$FF) then
-      VTimeout:=$FF;
-    FGPSGPS_DevParams.btReceiveGPSTimeoutSec:=VTimeout;
+      VTimeout := $FF;
+    FGPSGPS_DevParams.btReceiveGPSTimeoutSec := VTimeout;
 
     // delay
-    VTimeout:=AConfig.Delay;
+    VTimeout := AConfig.Delay;
     if (VTimeout>$FFFF) then
-      VTimeout:=$FFFF;
-    FGPSGPS_DevParams.wWorkerThreadTimeoutMSec:=VTimeout;
-    
-    FGPSGPS_DevParams.iBaudRate:=AConfig.BaudRate;
+      VTimeout := $FFFF;
+    FGPSGPS_DevParams.wWorkerThreadTimeoutMSec := VTimeout;
+
+    FGPSGPS_DevParams.iBaudRate := AConfig.BaudRate;
 
     // upper limit
     if FGPSGPS_DevParams.wWorkerThreadTimeoutMSec>cWorkingThread_MaxDelay_Msec then
-      FGPSGPS_DevParams.wWorkerThreadTimeoutMSec:=cWorkingThread_MaxDelay_Msec;
-
-    if _IsFlyOnTrackMode then
-      FGPSGPS_DevParams.pLowLevelHandler:=nil
-    else if InternalGetLoggerState(AConfig, ALogConfig, VTrackTypes) then
-      FGPSGPS_DevParams.pLowLevelHandler:=rLowLevelHandler
-    else
-      FGPSGPS_DevParams.pLowLevelHandler:=nil;
+      FGPSGPS_DevParams.wWorkerThreadTimeoutMSec := cWorkingThread_MaxDelay_Msec;
 
     // reserved for fly-on-track mode
-    if _IsFlyOnTrackMode then
-      FGPSGPS_DevParams.pTrackPointHandler:=rVSAGPS_TRACKPOINT_HANDLER
-    else
-      FGPSGPS_DevParams.pTrackPointHandler:=nil;
-
-    if _IsFlyOnTrackMode then begin
-      FGPSDevType:=gdt_FILE_Track;
-{$if not defined(VSAGPS_AS_DLL)}
-      FGPSPortName:='';
-{$ifend}
-      FGPSGPS_DevParams.btAutodetectOnConnect:=0; // no autodetect
-      FGPSGPS_DevParams.dwAutodetectFlags:=0;
-    end else if AConfig.USBGarmin then begin
-      // USB Garmin - always autodetect (check attached usb devices by guid)
-      FGPSDevType:=gdt_USB_Garmin;
-{$if not defined(VSAGPS_AS_DLL)}
-      FGPSPortName:='';
-{$ifend}
-      FGPSGPS_DevParams.btAutodetectOnConnect:=0; // always autodetect by internal algoritm
-      FGPSGPS_DevParams.dwAutodetectFlags:=0;
+    if (gpsoFlyOnTrack = VGPSOrigin) then begin
+      FGPSGPS_DevParams.pLowLevelHandler := nil;
+      FGPSGPS_DevParams.pTrackPointHandler := rVSAGPS_TRACKPOINT_HANDLER;
     end else begin
-      // NMEA via COMx port
-      FGPSDevType:=gdt_COM_NMEA0183;
-      FGPSPortName:='COM' + IntToStr(AConfig.Port);
-{$if defined(VSAGPS_AS_DLL)}
-      FGPSPortName:=FGPSPortName+#0;
-      FszGPSPortName:=PAnsiChar(FGPSPortName);
-{$ifend}
-      FGPSGPS_DevParams.btAutodetectOnConnect:=Ord(AConfig.AutodetectCOMOnConnect<>FALSE);
-      FGPSGPS_DevParams.dwAutodetectFlags:=AConfig.AutodetectCOMFlags;
+      FGPSGPS_DevParams.pTrackPointHandler := nil;
+      if InternalGetLoggerState(AConfig, ALogConfig, VTrackTypes) then
+        FGPSGPS_DevParams.pLowLevelHandler := rLowLevelHandler
+      else
+        FGPSGPS_DevParams.pLowLevelHandler := nil;
     end;
 
-{$if defined(VSAGPS_USE_DEBUG_STRING)}
-    VSAGPS_DebugAnsiString('TGPSModuleByVSAGPS.Connect: before GPSConnect');
+    if (gpsoNMEA = VGPSOrigin) then begin
+      // COM for NMEA
+      VGPSPortName := 'COM' + AnsiString(IntToStr(AConfig.Port));
+{$if defined(VSAGPS_AS_DLL)}
+      VGPSPortName := VGPSPortName + #0;
+      VszGPSPortName := PAnsiChar(VGPSPortName);
 {$ifend}
+      FGPSGPS_DevParams.btAutodetectOnConnect := Ord(AConfig.AutodetectCOMOnConnect <> False);
+      FGPSGPS_DevParams.dwAutodetectFlags := AConfig.AutodetectCOMFlags;
+    end else begin
+      // no COM
+{$if not defined(VSAGPS_AS_DLL)}
+      VGPSPortName := '';
+{$ifend}
+      // for garmin - always autodetect by internal algoritm
+      FGPSGPS_DevParams.btAutodetectOnConnect := 0;
+      FGPSGPS_DevParams.dwAutodetectFlags := 0;
+    end;
+
+    // switch by device type
+    case VGPSOrigin of
+      gpsoNMEA: begin
+        // NMEA via COMx port
+        VGPSDevType := gdt_COM_NMEA0183;
+      end;
+      gpsoGarmin: begin
+        // USB Garmin - always autodetect (check attached usb devices by guid)
+        VGPSDevType := gdt_USB_Garmin;
+      end;
+      gpsoFlyOnTrack: begin
+        // Fly-on-Track by list of tracks or folders
+        VGPSDevType := gdt_FILE_Track;
+      end;
+      gpsoLocationAPI: begin
+        // Location API (Windows 7+)
+        VGPSDevType := gdt_LocationAPI;
+      end;
+      else begin
+        // unknown
+        raise Exception.CreateFmt(SAS_MSG_UnknownGPSOrigin, [Integer(VGPSOrigin)]);
+      end;
+    end;
 
     try
 {$if defined(VSAGPS_AS_DLL)}
-      if (not VSAGPS_Connect(FVSAGPS_HANDLE,
-                             FGPSDevType,
-                             FszGPSPortName,
-                             PWideChar(VFlyOnTrackSource),
-                             @FGPSGPS_DevParams,
-                             nil,
-                             rVSAGPS_UNIT_INFO_DLL_Proc,
-                             @FConnectedUnitindex,
-                             nil)) then
+      if (not VSAGPS_Connect(
+                FVSAGPS_HANDLE,
+                VGPSDevType,
+                VszGPSPortName,
+                PWideChar(VFlyOnTrackSource),
+                @FGPSGPS_DevParams,
+                nil,
+                rVSAGPS_UNIT_INFO_DLL_Proc,
+                @FConnectedUnitindex,
+                nil
+      )) then
 {$else}
-      if (not FVSAGPS_Object.GPSConnect(FGPSDevType,
-                                        FGPSPortName,
-                                        PWideChar(VFlyOnTrackSource),
-                                        @FGPSGPS_DevParams,
-                                        nil,
-                                        rVSAGPS_UNIT_INFO_DLL_Proc,
-                                        @FConnectedUnitindex,
-                                        nil)) then
+      if (not FVSAGPS_Object.GPSConnect(
+                VGPSDevType,
+                VGPSPortName,
+                PWideChar(VFlyOnTrackSource),
+                @FGPSGPS_DevParams,
+                nil,
+                rVSAGPS_UNIT_INFO_DLL_Proc,
+                @FConnectedUnitindex,
+                nil
+      )) then
 {$ifend}
       begin
-
-{$if defined(VSAGPS_USE_DEBUG_STRING)}
-        VSAGPS_DebugAnsiString('TGPSModuleByVSAGPS.Connect: not connected');
-{$ifend}
-
         // not connected
         raise Exception.Create(SAS_MSG_NoGPSdetected);
       end;
@@ -644,9 +690,9 @@ begin
   // check only global state
   if (cUnitIndex_ALL<>AUnitIndex) then
     Exit;
-  
+
   if (FConnectState<>ANewState) or (gs_DoneDisconnected=ANewState) then begin
-    FConnectState:=ANewState;
+    FConnectState := ANewState;
 
     case FConnectState of
     gs_DoneDisconnected: begin
@@ -654,7 +700,7 @@ begin
       if FRecvTimeoutOccured then
         TimeOutNotifier.Notify(nil);
       DisconnectedNotifier.Notify(nil);
-      DoGPSUnitInfoChanged(AUnitIndex, guik_ClearALL, ''); // reset unit info
+      DoGPSUnitInfoChanged(AUnitIndex, guik_ClearALL, nil, False); // reset unit info
     end;
     gs_ProcessConnecting:
       ConnectingNotifier.Notify(nil);
@@ -670,7 +716,7 @@ end;
 
 procedure TGPSModuleByVSAGPS.GPSDoTimeout(const AUnitIndex: Byte);
 begin
-  FRecvTimeoutOccured:=TRUE;
+  FRecvTimeoutOccured := TRUE;
 end;
 
 procedure TGPSModuleByVSAGPS.Disconnect;
@@ -691,7 +737,7 @@ begin
 {$if defined(VSAGPS_USE_DEBUG_STRING)}
       VSAGPS_DebugAnsiString('TGPSModuleByVSAGPS.Disconnect: GPSDisconnect');
 {$ifend}
-    
+
 {$if defined(VSAGPS_AS_DLL)}
       VSAGPS_Disconnect(FVSAGPS_HANDLE);
 {$else}
@@ -708,7 +754,7 @@ begin
   finally
     UnLockConnect;
   end;
-  
+
 {$if defined(VSAGPS_USE_DEBUG_STRING)}
   VSAGPS_DebugAnsiString('TGPSModuleByVSAGPS.Disconnect: end');
 {$ifend}
@@ -717,22 +763,22 @@ end;
 procedure TGPSModuleByVSAGPS.DoAddPointToLogWriter(const AUnitIndex: Byte);
 var
   tATP: Tvsagps_AddTrackPoint;
-  s: AnsiString;
+  VSatsInfo: AnsiString;
 begin
   //inherited;
   LockLogger;
   try
     if (nil<>FVSAGPS_Logger) then begin
       ZeroMemory(@tATP, sizeof(tATP));
-      tATP.pPos:=@FSingleGPSData;
-      tATP.pSatFixAll:=@FFixSatsALL;
-      tATP.btUnitIndex:=AUnitIndex;
+      tATP.pPos := @FSingleGPSData;
+      tATP.pSatFixAll := @FFixSatsALL;
+      tATP.btUnitIndex := AUnitIndex;
       try
         // get sats info (if requested)
         if (0<>FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_Sats_Info) then begin
-          s:=SerializeSatsInfo;
-          if (0<Length(s)) then begin
-            tATP.szSatsInfo := VSAGPS_AllocPCharByString(s, TRUE);
+          VSatsInfo := SerializeSatsInfo;
+          if (0<Length(VSatsInfo)) then begin
+            tATP.szSatsInfo := VSAGPS_AllocPCharByString(VSatsInfo, True);
           end;
         end;
         // run
@@ -742,7 +788,7 @@ begin
         FVSAGPS_Logger.AddTrackPoint(@tATP);
 {$ifend}
       finally
-        VSAGPS_FreeAndNil_PChar(tATP.szSatsInfo);
+        VSAGPS_FreeAndNil_PAnsiChar(tATP.szSatsInfo);
       end;
     end;
   finally
@@ -754,7 +800,7 @@ function TGPSModuleByVSAGPS.ExecuteGPSCommand(
   const AUnitIndex: Byte;
   const ACommand: LongInt;
   const APointer: Pointer
-): AnsiString;
+): string;
 begin
   // some special commands
 
@@ -816,15 +862,26 @@ end;
 procedure TGPSModuleByVSAGPS.DoGPSUnitInfoChanged(
   const AUnitIndex: Byte;
   const AKind: TVSAGPS_UNIT_INFO_Kind;
-  const AValue: PAnsiChar);
-var s: AnsiString;
+  const AValue: Pointer;
+  const AIsWide: Boolean
+);
+var
+  VValue: string;
+  VAnsiValue: AnsiString;
+  VWideValue: WideString;
 begin
   // save to info
   if (guik_ClearALL=AKind) then
     InternalClearUnitInfo(AUnitIndex)
   else begin
-    SafeSetStringP(s, AValue);
-    InternalSetUnitInfo(AUnitIndex, AKind, s);
+    if AIsWide then begin
+      VWideValue := SafeSetStringP(PWideChar(AValue));
+      VValue := string(VWideValue);
+    end else begin
+      VAnsiValue := SafeSetStringP(PAnsiChar(AValue));
+      VValue := string(VAnsiValue);
+    end;
+    InternalSetUnitInfo(AUnitIndex, AKind, VValue);
   end;
   ReGenerateGPSUnitInfo(AUnitIndex);
 end;
@@ -842,10 +899,10 @@ end;
 function TGPSModuleByVSAGPS.GetIsReadyToConnect: Boolean;
 begin
 {$if defined(VSAGPS_AS_DLL)}
-  Result:=(nil=FVSAGPS_HANDLE) or (gs_DoneDisconnected=VSAGPS_GPSState(FVSAGPS_HANDLE))
+  Result := (nil=FVSAGPS_HANDLE) or (gs_DoneDisconnected=VSAGPS_GPSState(FVSAGPS_HANDLE))
 {$else}
-  Result:=(nil=FVSAGPS_Object) or (gs_DoneDisconnected=FVSAGPS_Object.GPSState);
-{$ifend}  
+  Result := (nil=FVSAGPS_Object) or (gs_DoneDisconnected=FVSAGPS_Object.GPSState);
+{$ifend}
 end;
 
 procedure TGPSModuleByVSAGPS.GPSRecv_NMEA_GSV(const AUnitIndex: Byte; const pGSV: PNMEA_GSV);
@@ -860,14 +917,14 @@ begin
   try
     // 'GP' = for GPS and SBAS
     // 'GL' = for GLONASS
-    VTalkerID:=NMEA_TalkerID_to_String(@(pGSV^.chTalkerID));
+    VTalkerID := NMEA_TalkerID_to_String(@(pGSV^.chTalkerID));
 
     _UpdateSatsInView(VTalkerID, pGSV^.sats_in_view);
-    
+
     if (0<pGSV^.sats_in_view) then begin
-      VStatus:=cSat_Status_Unavailable;
-      if (not GetSatNumberIndexEx(Select_PVSAGPS_FIX_SATS_from_ALL(@FFixSatsALL,VTalkerID), @(pGSV^.info.sat_info), VFixIndex)) then
-        VFixIndex:=-1;
+      VStatus := cSat_Status_Unavailable;
+      if (not GetSatNumberIndexEx(Select_PVSAGPS_FIX_SATS_from_ALL(@FFixSatsALL, VTalkerID), @(pGSV^.info.sat_info), VFixIndex)) then
+        VFixIndex := -1;
 
       if (pGSV^.info.sat_info.svid>0) and (pGSV^.info.snr>0) then begin
         Inc(VStatus); // really 1 or 2 - i.e. >0
@@ -903,11 +960,11 @@ begin
     Exit;
   LockGPSData;
   try
-    VPositionOK:=Nmea_Coord_To_Double(@(pRMC^.lon), VPoint.X) and
+    VPositionOK := Nmea_Coord_To_Double(@(pRMC^.lon), VPoint.X) and
                  Nmea_Coord_To_Double(@(pRMC^.lat), VPoint.Y);
 
-    VUTCDateOK:=Nmea_Date_To_DateTime(@(pRMC^.date), VUTCDate);
-    VUTCTimeOK:=Nmea_Time_To_DateTime(@(pRMC^.time), VUTCTime);
+    VUTCDateOK := Nmea_Date_To_DateTime(@(pRMC^.date), VUTCDate);
+    VUTCTimeOK := Nmea_Time_To_DateTime(@(pRMC^.time), VUTCTime);
 
     _UpdatePosTime(
       VPositionOK,
@@ -929,7 +986,7 @@ begin
       pRMC^.magvar_deg,
       pRMC^.magvar_sym
     );
-      
+
     _UpdateNavMode(pRMC^.status); // A (valid) or V (not valid)
     _UpdateNmea23Mode(pRMC^.nmea23_mode, TRUE, FALSE);
   finally
@@ -966,16 +1023,16 @@ procedure TGPSModuleByVSAGPS.Do_VSAGPS_LOGGER_TRACKPARAMS_EVENT(const pLogger: P
   begin
     if (nil<>AParamsOut.AStrResult) then begin
       VSAGPS_FreeMem(AParamsOut.AStrResult);
-      AParamsOut.AStrResult:=nil;
+      AParamsOut.AStrResult := nil;
     end;
-    dwLen:=Length(s);
-    AParamsOut.AStrResult:=VSAGPS_GetMem(dwLen+1);
+    dwLen := Length(s);
+    AParamsOut.AStrResult := VSAGPS_GetMem(dwLen + 1);
     CopyMemory(AParamsOut.AStrResult, PAnsiChar(s), dwLen);
-    AParamsOut.AStrResult[dwLen]:=#0;
+    AParamsOut.AStrResult[dwLen] := #0;
   end;
 
 var
-  st: AnsiString;
+  st: string;
 begin
   if (ttGPX=pATP^.eTrackType) then
   case pATP^.eTrackParam of
@@ -988,9 +1045,9 @@ begin
         UnlockUnitInfo(pATP^.btUnitIndex);
       end;
       if (0<Length(st)) then begin
-        AParamsOut^.UsePredefined:=FALSE;
-        AParamsOut^.UseResult:=TRUE;
-        _AllocA(st);
+        AParamsOut^.UsePredefined := FALSE;
+        AParamsOut^.UseResult := TRUE;
+        _AllocA(AnsiString(st)); // TODO: correct this
       end;
     end;
   end;
@@ -1002,33 +1059,33 @@ var
   Vspeed: Double;
   VHeading: Double;
 begin
-  if (nil=pVTG) or (sizeof(pVTG^)<>pVTG^.dwSize) then
+  if (nil = pVTG) or (sizeof(pVTG^) <> pVTG^.dwSize) then
     Exit;
   LockGPSData;
   try
     InternalApplyCalcStatsFlag(AUnitIndex);
 
-    VHeading:=cGps_Float32_no_data;
+    VHeading := cGps_Float32_no_data;
     if ('T'=pVTG^.trk_sym) then
-      VHeading:=pVTG^.trk_deg
-    else if ('T'=pVTG^.mag_sym) then
-      VHeading:=pVTG^.mag_deg;
+      VHeading := pVTG^.trk_deg
+    else if ('T' = pVTG^.mag_sym) then
+      VHeading := pVTG^.mag_deg;
 
-    Vspeed:=cGps_Float32_no_data;
-    if ('K'=pVTG^.kmph_sym) then
-      Vspeed:=pVTG^.kmph_speed
-    else if ('K'=pVTG^.knots_sym) then
-      Vspeed:=pVTG^.knots_speed
-    else if ('N'=pVTG^.knots_sym) then
-      Vspeed:=pVTG^.knots_speed*cNmea_knot_to_kmph
-    else if ('N'=pVTG^.kmph_sym) then
-      Vspeed:=pVTG^.kmph_speed*cNmea_knot_to_kmph;
+    Vspeed := cGps_Float32_no_data;
+    if ('K' = pVTG^.kmph_sym) then
+      Vspeed := pVTG^.kmph_speed
+    else if ('K' = pVTG^.knots_sym) then
+      Vspeed := pVTG^.knots_speed
+    else if ('N' = pVTG^.knots_sym) then
+      Vspeed := pVTG^.knots_speed * cNmea_knot_to_kmph
+    else if ('N' = pVTG^.kmph_sym) then
+      Vspeed := pVTG^.kmph_speed * cNmea_knot_to_kmph;
 
     _UpdateSpeedHeading(Vspeed,
                         VHeading,
                         0,
                         FALSE);
-                        
+
     _UpdateNmea23Mode(pVTG^.nmea23_mode, TRUE, FALSE);
   finally
     UnLockGPSData(FALSE, FALSE);
@@ -1039,7 +1096,7 @@ end;
 procedure TGPSModuleByVSAGPS.InternalApplyCalcStatsFlag(const AUnitIndex: Byte; const AAllowCalc: Boolean);
 begin
   // TODO: multiple flags
-  FSingleGPSData.AllowCalcStats:=AAllowCalc;
+  FSingleGPSData.AllowCalcStats := AAllowCalc;
 end;
 
 procedure TGPSModuleByVSAGPS.InternalClearUnitInfo(const AUnitIndex: Byte);
@@ -1064,26 +1121,26 @@ begin
     ATrackTypes := [];
   end;
   if not Result then
-    Result := Assigned(AConfig) and AConfig.NMEALog;
+    Result := Assigned(AConfig) and AConfig.LowLevelLog;
 end;
 
 procedure TGPSModuleByVSAGPS.InternalPrepareLoggerParams;
 begin
   ZeroMemory(@FVSAGPS_LOG_WRITER_PARAMS, sizeof(FVSAGPS_LOG_WRITER_PARAMS));
-  FVSAGPS_LOG_WRITER_PARAMS.wSize:=sizeof(FVSAGPS_LOG_WRITER_PARAMS);
-  FVSAGPS_LOG_WRITER_PARAMS.DelEmptyFileOnClose:=TRUE;
-  FVSAGPS_LOG_WRITER_PARAMS.pLoggerStateChangedProc:=rTVSAGPS_LOGGER_STATECHANGED_PROC;
+  FVSAGPS_LOG_WRITER_PARAMS.wSize := sizeof(FVSAGPS_LOG_WRITER_PARAMS);
+  FVSAGPS_LOG_WRITER_PARAMS.DelEmptyFileOnClose := TRUE;
+  FVSAGPS_LOG_WRITER_PARAMS.pLoggerStateChangedProc := rTVSAGPS_LOGGER_STATECHANGED_PROC;
   // FVSAGPS_LOG_WRITER_PARAMS.RestartLogAfterPoints[ttGPX]:=10000; // restart after 10000 points
   // FVSAGPS_LOG_WRITER_PARAMS.RestartLogAfterBytes[ttGarmin]:=1024*1024*10; // restart if bigger than 10MByte
 
   ZeroMemory(@FVSAGPS_GPX_WRITER_PARAMS, sizeof(FVSAGPS_GPX_WRITER_PARAMS));
-  FVSAGPS_GPX_WRITER_PARAMS.wSize:=sizeof(FVSAGPS_GPX_WRITER_PARAMS);
-  FVSAGPS_GPX_WRITER_PARAMS.dwLoggerFlags:=lwpf_SkipNoneFix; // do not log without fix
-  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Undocumented_Speed:=1; // for gpsmapedit support
-  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_LocalTime:=1;
-  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_TimeShift:=1;
-  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_Sats_Info:=1;
-  FVSAGPS_GPX_WRITER_PARAMS.btUse_Predefined_Extensions[geSASGIS]:=1; // for sasgis extensions
+  FVSAGPS_GPX_WRITER_PARAMS.wSize := sizeof(FVSAGPS_GPX_WRITER_PARAMS);
+  FVSAGPS_GPX_WRITER_PARAMS.dwLoggerFlags := lwpf_SkipNoneFix; // do not log without fix
+  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Undocumented_Speed := 1; // for gpsmapedit support
+  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_LocalTime := 1;
+  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_TimeShift := 1;
+  FVSAGPS_GPX_WRITER_PARAMS.btWrite_Sasx_Sats_Info := 1;
+  FVSAGPS_GPX_WRITER_PARAMS.btUse_Predefined_Extensions[geSASGIS] := 1; // for sasgis extensions
 end;
 
 procedure TGPSModuleByVSAGPS.InternalResumeLogger;
@@ -1105,12 +1162,12 @@ end;
 procedure TGPSModuleByVSAGPS.InternalSetUnitInfo(
   const AUnitIndex: Byte;
   const AKind: TVSAGPS_UNIT_INFO_Kind;
-  const AValue: AnsiString
+  const AValue: string
 );
 begin
   LockUnitInfo(AUnitIndex);
   try
-    FVSAGPS_UNIT_INFO[AKind]:=AValue;
+    FVSAGPS_UNIT_INFO[AKind] := AValue;
   finally
     UnlockUnitInfo(AUnitIndex);
   end;
@@ -1129,18 +1186,18 @@ begin
       // create or stop running
       if (nil=FVSAGPS_Logger) then begin
         // set path for new logger
-        VLoggerPath:=IncludeTrailingPathDelimiter(AConfig.LogPath);
-        tCallbackFilter.seCallCallbackOnParams:=[tpTrkSrc];
+        VLoggerPath := IncludeTrailingPathDelimiter(AConfig.LogPath);
+        tCallbackFilter.seCallCallbackOnParams := [tpTrkSrc];
         // create new
 {$if defined(VSAGPS_AS_DLL)}
-        FVSAGPS_Logger:=VSAGPS_MakeLogger(Self,
+        FVSAGPS_Logger := VSAGPS_MakeLogger(Self,
                                           @FVSAGPS_LOG_WRITER_PARAMS,
                                           @FVSAGPS_GPX_WRITER_PARAMS,
                                           PWideChar(VLoggerPath),
                                           rVSAGPS_LOGGER_TRACKPARAMS_EVENT,
                                           @tCallbackFilter);
 {$else}
-        FVSAGPS_Logger:=Tvsagps_track_writer.Create;
+        FVSAGPS_Logger := Tvsagps_track_writer.Create;
         FVSAGPS_Logger.SetALLLoggerParams(Self,
                                           @FVSAGPS_LOG_WRITER_PARAMS,
                                           @FVSAGPS_GPX_WRITER_PARAMS,
@@ -1160,18 +1217,25 @@ begin
       // define log type(s)
       if Assigned(ALogConfig) then begin
         // get types
-        System.Exclude(VTrackTypes,ttGarmin);
-        System.Exclude(VTrackTypes,ttNMEA);
+        System.Exclude(VTrackTypes, ttGarmin);
+        System.Exclude(VTrackTypes, ttNMEA);
       end else begin
         // no log
-        VTrackTypes:=[];
+        VTrackTypes := [];
       end;
 
-      if AConfig.NMEALog then begin
-        if AConfig.USBGarmin then
-          System.Include(VTrackTypes,ttGarmin)
-        else
-          System.Include(VTrackTypes,ttNMEA);
+      if AConfig.LowLevelLog then begin
+        case AConfig.GPSOrigin of
+          gpsoNMEA: begin
+            System.Include(VTrackTypes, ttNMEA);
+          end;
+          gpsoGarmin: begin
+            System.Include(VTrackTypes, ttGarmin);
+          end;
+          gpsoLocationAPI: begin
+            System.Include(VTrackTypes, ttLocationAPI);
+          end;
+        end;
       end;
 
       // create suspended
@@ -1197,7 +1261,7 @@ begin
     if (nil<>FVSAGPS_LOGGER) then begin
       VSAGPS_CloseLogger(FVSAGPS_LOGGER);
       VSAGPS_Destroy(FVSAGPS_LOGGER);
-      FVSAGPS_LOGGER:=nil;
+      FVSAGPS_LOGGER := nil;
     end;
 {$else}
     if (nil<>FVSAGPS_Logger) then begin
@@ -1317,7 +1381,7 @@ begin
   LockGPSData;
   try
     // altitude above WGS 84 ellipsoid + height of WGS84 ellipsoid above MSL
-    _UpdateAlt(pData^.alt+pData^.msl_hght);
+    _UpdateAlt(pData^.alt + pData^.msl_hght);
     _UpdateGeoidHeight(-pData^.msl_hght); // here we need: Height (in meters) of geoid (mean sea level) above WGS84 earth ellipsoid
 
     // 2 sigma
@@ -1326,32 +1390,32 @@ begin
                pData^.epe/2);
 
     // dimentions
-    VTemp:=pData^.fix;
+    VTemp := pData^.fix;
     if (VTemp>=Type1_fix_2D_diff) then
-      VTemp:=VTemp-Type1_fix_2D_diff+2;
+      VTemp := VTemp - Type1_fix_2D_diff + 2;
     _UpdateDimentions(VTemp);
 
     // fixstatus
-    VTemp:=pData^.fix;
+    VTemp := pData^.fix;
     if (VTemp>Type1_fix_2D) then
-      VTemp:=Type1_fix_2D; // 2
+      VTemp := Type1_fix_2D; // 2
     _UpdateFixStatus(VTemp);
 
     // dgps
-    VNmea23Mode:=#0;
+    VNmea23Mode := #0;
     if (pData^.fix >= Type1_fix_2D_diff) then
       VNmea23Mode:='D'
     else if (pData^.fix >= Type1_fix_2D) then
       VNmea23Mode:='A';
     _UpdateNmea23Mode(VNmea23Mode, FALSE, FALSE);
 
-    VPoint.X:=pData^.posn.lon*180/PI;
-    VPoint.Y:=pData^.posn.lat*180/PI;
+    VPoint.X := pData^.posn.lon*180/PI;
+    VPoint.Y := pData^.posn.lat*180/PI;
 
-    VUTCTime:=Get_UTCDateTime_From_D800(pData);
+    VUTCTime := Get_UTCDateTime_From_D800(pData);
 
-    VUTCDate:=DateOf(VUTCTime);
-    VUTCTime:=TimeOf(VUTCTime);
+    VUTCDate := DateOf(VUTCTime);
+    VUTCTime := TimeOf(VUTCTime);
 
 
     _UpdatePosTime(
@@ -1361,8 +1425,8 @@ begin
       VUTCTime);
 
     _UpdateSpeedHeading(
-      sqrt(pData^.east*pData^.east+pData^.north*pData^.north+pData^.up*pData^.up)*3.6, // in km/h
-      ArcTan2(pData^.north,pData^.east)*180/PI,
+      sqrt(pData^.east*pData^.east + pData^.north*pData^.north + pData^.up*pData^.up)*3.6, // in km/h
+      ArcTan2(pData^.north, pData^.east)*180/PI,
       pData^.up, // in m/s
       TRUE);
 
@@ -1387,24 +1451,24 @@ begin
     Exit;
   LockGPSData;
   try
-    VSatCount:=0;
-    for i:=0 to cpo_all_sat_data_count-1 do begin
+    VSatCount := 0;
+    for i := 0 to cpo_all_sat_data_count - 1 do begin
       // params for sat
-      VStatus:=(pData^.sv[i].status and cGarmin_Flag_Fixed_Mask);
+      VStatus := (pData^.sv[i].status and cGarmin_Flag_Fixed_Mask);
 
-      VFixedStatus:=cSat_Status_Unavailable;
+      VFixedStatus := cSat_Status_Unavailable;
 
       if (0<pData^.sv[i].svid) and (0<>VStatus) then begin // sat number ok, with some bits
         // 001 (1) - returns 1 = cSat_Status_Visible
         // 100 (4) - returns 2 = cSat_Status_InSolution
         // 101 (5) - returns 3 = cSat_Status_FixWithEphe
         if (cGarmin_Flag_Fixed_Mask = (VStatus and cGarmin_Flag_Fixed_Mask)) then
-          VFixedStatus:=cSat_Status_Fixed
+          VFixedStatus := cSat_Status_Fixed
         else
-          VFixedStatus:=cSat_Status_Visible;
-      end;     
+          VFixedStatus := cSat_Status_Visible;
+      end;
 
-      Vsnr:=pData^.sv[i].snr div snr_to_procents_divider;
+      Vsnr := pData^.sv[i].snr div snr_to_procents_divider;
 
       if SatAvailableForShow(pData^.sv[i].svid, Vsnr, VFixedStatus) then
         Inc(VSatCount);
@@ -1418,22 +1482,71 @@ begin
                        VFixedStatus,
                        pData^.sv[i].status);
 
-      if (VFixedStatus>=cSat_Status_Fixed) then
-        VFixedSats.sats[i].svid:=pData^.sv[i].svid
+      if (VFixedStatus >= cSat_Status_Fixed) then
+        VFixedSats.sats[i].svid := pData^.sv[i].svid
       else
-        VFixedSats.sats[i].svid:=cGPS_Invalid_SatNumber;
-        
+        VFixedSats.sats[i].svid := cGPS_Invalid_SatNumber;
+
       // no constellation_flag for garmin
-      VFixedSats.sats[i].constellation_flag:=0;
+      VFixedSats.sats[i].constellation_flag := 0;
     end;
-    
+
     _UpdateSatsInView(nmea_ti_GPS, VSatCount);
 
-    VFixedSats.fix_count:=VSatCount;
-    VFixedSats.all_count:=VSatCount;
+    VFixedSats.fix_count := VSatCount;
+    VFixedSats.all_count := VSatCount;
     _UpdateFixedSats(nmea_ti_GPS, @VFixedSats);
   finally
     UnLockGPSData(AUnitIndex, FALSE, TRUE);
+  end;
+end;
+
+procedure TGPSModuleByVSAGPS.GPSRecv_LocationApi(
+  const AUnitIndex: Byte;
+  const dwPacketType: DWORD;
+  const APacket: Pointer
+);
+begin
+  if (nil = APacket) then
+    Exit;
+
+  LockGPSData;
+  try
+    with Pvsagps_location_api_packet(APacket)^ do
+    _UpdatePosTime(
+      IsPositionOK,
+      TDoublePoint(LatLong),
+      IsUTCTimeOK,
+      UTCTime
+    );
+
+    with Pvsagps_location_api_packet(APacket)^ do
+    _UpdateUTCDate(
+      IsUTCDateOK,
+      UTCDate
+    );
+
+    with Pvsagps_location_api_packet(APacket)^ do
+    if IsAltitudeOK then begin
+      _UpdateAlt(Altitude);
+    end;
+
+    with Pvsagps_location_api_packet(APacket)^ do
+    if IsHDOPOK then begin
+      if IsVDOPOK then begin
+        _UpdateDOP(ErrorRadius, AltitudeError, 0);
+      end else begin
+        _UpdateHDOP(ErrorRadius);
+      end;
+    end;
+
+    if Pvsagps_location_api_packet(APacket)^.IsPositionOK then begin
+      // set fix mode
+      _UpdateNavMode('A');
+      _UpdateNmea23Mode('A', False, False);
+    end;
+  finally
+    UnLockGPSData(AUnitIndex, True, False);
   end;
 end;
 
@@ -1447,7 +1560,7 @@ procedure TGPSModuleByVSAGPS.GPSRecv_LowLevel(const AUnitIndex: Byte;
     Result := VSAGPS_ActiveLogger(FVSAGPS_LOGGER);
 {$else}
     Result := FVSAGPS_Logger.Active;
-{$ifend}  
+{$ifend}
   end;
 
   procedure AddLoggerPacket(const p: PAnsiChar);
@@ -1463,9 +1576,9 @@ procedure TGPSModuleByVSAGPS.GPSRecv_LowLevel(const AUnitIndex: Byte;
   var p: PAnsiChar;
   begin
 {$if defined(VSAGPS_AS_DLL)}
-    p:=VSAGPS_SerializePacket(FVSAGPS_HANDLE, AUnitIndex, APacket, nil);
+    p := VSAGPS_SerializePacket(FVSAGPS_HANDLE, AUnitIndex, APacket, nil);
 {$else}
-    p:=FVSAGPS_Object.SerializePacket(AUnitIndex, APacket);
+    p := FVSAGPS_Object.SerializePacket(AUnitIndex, APacket);
 {$ifend}
     try
       AddLoggerPacket(p);
@@ -1478,8 +1591,9 @@ begin
   if (nil<>FVSAGPS_LOGGER) and (nil<>APacket) then
   if _Active then begin
     // get packet for logging
-    if (gdt_USB_Garmin=(ADevType and gdt_USB_Garmin)) then begin
+    if (0 <> (ADevType and (gdt_USB_Garmin or gdt_LocationAPI))) then begin
       // write full dump of binary garmin packets (with header about packet type)
+      // location api packets too
       InternalDumpByDevice;
     end else if (gdt_COM_NMEA0183=(ADevType and gdt_COM_NMEA0183)) then begin
       // write full nmea packets like a strings
@@ -1505,10 +1619,10 @@ begin
     // b) for GN (GP+GL) shows number of all sats
     //_UpdateSatsInView(pGGA^.sats_in_view);
 
-    VPositionOK:=Nmea_Coord_To_Double(@(pGGA^.lon), VPoint.X) and
+    VPositionOK := Nmea_Coord_To_Double(@(pGGA^.lon), VPoint.X) and
                  Nmea_Coord_To_Double(@(pGGA^.lat), VPoint.Y);
 
-    VUTCTimeOK:=Nmea_Time_To_DateTime(@(pGGA^.time), VUTCTime);
+    VUTCTimeOK := Nmea_Time_To_DateTime(@(pGGA^.time), VUTCTime);
 
     _UpdatePosTime(
       VPositionOK,
@@ -1519,7 +1633,7 @@ begin
 
     _UpdateFixStatus(2*Ord(pGGA^.quality>0)); // set 0 or 2
 
-    VNmea23Mode:=#0;
+    VNmea23Mode := #0;
     case pGGA^.quality of
     {cNmea_Autonomous_Mode:
       VNmea23Mode:='A';
@@ -1531,7 +1645,7 @@ begin
       VNmea23Mode:='E';
     end;
     _UpdateNmea23Mode(VNmea23Mode, FALSE, TRUE);
-    
+
     _UpdateHDOP(pGGA^.hdop);
 
     _UpdateAlt(pGGA^.alt_from_msl);
@@ -1554,10 +1668,10 @@ begin
     Exit;
   LockGPSData;
   try
-    VPositionOK:=Nmea_Coord_To_Double(@(pGLL^.lon), VPoint.X) and
+    VPositionOK := Nmea_Coord_To_Double(@(pGLL^.lon), VPoint.X) and
                  Nmea_Coord_To_Double(@(pGLL^.lat), VPoint.Y);
 
-    VUTCTimeOK:=Nmea_Time_To_DateTime(@(pGLL^.time), VUTCTime);
+    VUTCTimeOK := Nmea_Time_To_DateTime(@(pGLL^.time), VUTCTime);
 
     _UpdatePosTime(
       VPositionOK,
@@ -1580,10 +1694,10 @@ begin
     Exit;
   LockGPSData;
   try
-    VSourceTalkerID:=NMEA_TalkerID_to_String(@(pGSA^.chCorrectedTalkerID));
+    VSourceTalkerID := NMEA_TalkerID_to_String(@(pGSA^.chCorrectedTalkerID));
 
     // if QZSS - skip (no data)
-    if SameText(VSourceTalkerID, nmea_ti_QZSS) then
+    if ALSameText(VSourceTalkerID, nmea_ti_QZSS) then
       Exit;
 
     // if no corrected talker_id - skip data

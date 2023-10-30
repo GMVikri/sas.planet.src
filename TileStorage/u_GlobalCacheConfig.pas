@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GlobalCacheConfig;
@@ -45,6 +45,7 @@ type
     FGECachePath: IPathConfig;
     FGCCachePath: IPathConfig;
     FBDBCachePath: IPathConfig;
+    FBDBVerCachePath: IPathConfig;
     FDBMSCachePath: IPathConfig;
 
     function GetDefCache: byte;
@@ -57,6 +58,7 @@ type
     function GetGECachePath: IPathConfig;
     function GetGCCachePath: IPathConfig;
     function GetBDBCachePath: IPathConfig;
+    function GetBDBVerCachePath: IPathConfig;
     function GetDBMSCachePath: IPathConfig;
   protected
     procedure DoReadConfig(const AConfigProvider: IConfigDataProvider); override;
@@ -72,8 +74,7 @@ implementation
 uses
   c_CacheTypeCodes,
   u_PathConfig,
-  u_ConfigSaveLoadStrategyBasicProviderSubItem,
-  u_Notifier;
+  u_ConfigSaveLoadStrategyBasicProviderSubItem;
 
 { TGlobalCacheConfig }
 
@@ -99,6 +100,8 @@ begin
   Add(FGCCachePath, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PATHtoCACHE'), False, False, False, False);
   FBDBCachePath  := TPathConfig.Create('BDBCache',  c_File_Cache_Default_BDB,  FCacheGlobalPath);
   Add(FBDBCachePath, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PATHtoCACHE'), False, False, False, False);
+  FBDBVerCachePath  := TPathConfig.Create('BDBVerCache',  c_File_Cache_Default_BDBv,  FCacheGlobalPath);
+  Add(FBDBVerCachePath, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PATHtoCACHE'), False, False, False, False);
   FDBMSCachePath := TPathConfig.Create('DBMSCache', c_File_Cache_Default_DBMS, FCacheGlobalPath);
   Add(FDBMSCachePath, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PATHtoCACHE'), False, False, False, False);
 end;
@@ -130,6 +133,11 @@ end;
 function TGlobalCacheConfig.GetBDBCachePath: IPathConfig;
 begin
   Result := FBDBCachePath;
+end;
+
+function TGlobalCacheConfig.GetBDBVerCachePath: IPathConfig;
+begin
+  Result := FBDBVerCachePath;
 end;
 
 function TGlobalCacheConfig.GetDBMSCachePath: IPathConfig;

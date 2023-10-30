@@ -1,11 +1,32 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_GpsTrackRecorder;
 
 interface
 
 uses
+  Windows,
   t_GeoTypes,
-  i_VectorItemLonLat,
-  i_VectorItemsFactory,
+  i_GeometryLonLat,
+  i_GeometryLonLatFactory,
   i_PathConfig,
   i_GPS,
   i_GPSRecorder,
@@ -35,7 +56,7 @@ type
   TGpsTrackRecorder = class(TConfigDataElementBaseEmptySaveLoad, IGpsTrackRecorder, IGpsTrackRecorderInternal)
   private
     FDataFile: IPathConfig;
-    FVectorItemsFactory: IVectorItemsFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
 
     FTrack: ITrackPointsBlocksListStatic;
     FLastBlock: ITrackPoitnsBlock;
@@ -56,10 +77,10 @@ type
       const AMaxCount: Integer
     ): IEnumGPSTrackPoint;
 
-    function GetAllPoints: ILonLatPath;
+    function GetAllPoints: IGeometryLonLatLine;
   public
     constructor Create(
-      const AVectorItemsFactory: IVectorItemsFactory;
+      const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
       const ADataFile: IPathConfig
     );
   end;
@@ -71,7 +92,7 @@ uses
   SysUtils,
   Classes,
   i_EnumDoublePoint,
-  u_GeoFun,
+  u_GeoFunc,
   u_BaseInterfacedObject;
 
 { TTrackPoitnsBlock }
@@ -424,10 +445,10 @@ const
 { TGpsTrackRecorder }
 
 constructor TGpsTrackRecorder.Create(
-  const AVectorItemsFactory: IVectorItemsFactory; const ADataFile: IPathConfig);
+  const AVectorGeometryLonLatFactory: IGeometryLonLatFactory; const ADataFile: IPathConfig);
 begin
   inherited Create;
-  FVectorItemsFactory := AVectorItemsFactory;
+  FVectorGeometryLonLatFactory := AVectorGeometryLonLatFactory;
   FDataFile := ADataFile;
   FLastPositionOK := False;
   FTrack := TTrackPointsBlocksListStatic.Create;
@@ -520,7 +541,7 @@ begin
   end;
 end;
 
-function TGpsTrackRecorder.GetAllPoints: ILonLatPath;
+function TGpsTrackRecorder.GetAllPoints: IGeometryLonLatLine;
 var
   VTrackPointsEnum: IEnumGPSTrackPoint;
   VPointsEnum: IEnumLonLatPoint;
@@ -534,7 +555,7 @@ begin
       );
     VPointsEnum :=
       TEnumTrackPointsByEnumGPSTrackPoint.Create(VTrackPointsEnum);
-    Result := FVectorItemsFactory.CreateLonLatPathByEnum(VPointsEnum);
+    Result := FVectorGeometryLonLatFactory.CreateLonLatMultiLineByEnum(VPointsEnum);
   finally
     UnlockRead;
   end;
@@ -657,16 +678,22 @@ begin
   inherited;
   VFileName := FDataFile.FullPath;
   try
-    VStream := TFileStream.Create(VFileName, fmCreate);
+    VStream := nil;
     try
-      VVersion := CVersionMagicID;
-      VStream.WriteBuffer(VVersion, SizeOf(VVersion));
       VEnum := LastPoints(10000);
       while VEnum.Next(VPoint) do begin
+        if not Assigned(VStream) then begin
+          VStream := TFileStream.Create(VFileName, fmCreate);
+          VVersion := CVersionMagicID;
+          VStream.WriteBuffer(VVersion, SizeOf(VVersion));
+        end;
         VStream.WriteBuffer(VPoint.Point.X, SizeOf(VPoint.Point.X));
         VStream.WriteBuffer(VPoint.Point.Y, SizeOf(VPoint.Point.Y));
         VStream.WriteBuffer(VPoint.Speed, SizeOf(VPoint.Speed));
         VStream.WriteBuffer(VPoint.Time, SizeOf(VPoint.Time));
+      end;
+      if not Assigned(VStream) then begin
+        DeleteFile(VFileName);
       end;
     finally
       VStream.Free;

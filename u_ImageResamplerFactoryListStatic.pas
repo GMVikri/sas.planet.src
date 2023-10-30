@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ImageResamplerFactoryListStatic;
@@ -23,104 +23,119 @@ unit u_ImageResamplerFactoryListStatic;
 interface
 
 uses
-  SysUtils,
-  Classes,
+  i_InterfaceListStatic,
   i_ImageResamplerFactory,
   u_BaseInterfacedObject;
 
 type
   TImageResamplerFactoryListStatic = class(TBaseInterfacedObject, IImageResamplerFactoryList)
   private
-    FList: TStringList;
-    FCS: IReadWriteSync;
-  protected
-    procedure Add(
-      const AFactory: IImageResamplerFactory;
-      const ACaption: string
-    );
+    FList: IInterfaceListStatic;
   private
-    function Count: Integer;
+    function GetCount: Integer;
     function Get(AIndex: Integer): IImageResamplerFactory;
     function GetCaption(AIndex: Integer): string;
+    function GetGUID(AIndex: Integer): TGUID;
+    function GetIndexByGUID(const AGUID: TGUID): Integer;
   public
-    constructor Create;
-    destructor Destroy; override;
+    constructor Create(const AList: IInterfaceListStatic);
+  end;
+
+  TImageResamplerFactoryListStaticEntry = class(TBaseInterfacedObject, IImageResamplerFactoryListEntry)
+  private
+    FFactory: IImageResamplerFactory;
+    FCaption: string;
+    FGUID: TGUID;
+  private
+    function GetFactory: IImageResamplerFactory;
+    function GetCaption: string;
+    function GetGUID: TGUID;
+  public
+    constructor Create(
+      const AFactory: IImageResamplerFactory;
+      const ACaption: string;
+      const AGUID: TGUID
+    );
   end;
 
 implementation
 
 uses
-  u_Synchronizer;
+  SysUtils;
 
 { TImageResamplerFactoryListStatic }
 
-constructor TImageResamplerFactoryListStatic.Create;
+constructor TImageResamplerFactoryListStatic.Create(const AList: IInterfaceListStatic);
 begin
-  inherited;
-  FCS := MakeSyncRW_Std(Self, TRUE);
-  FList := TStringList.Create;
+  Assert(Assigned(AList));
+  Assert(AList.Count > 0);
+  inherited Create;
+  FList := AList;
 end;
 
-destructor TImageResamplerFactoryListStatic.Destroy;
+function TImageResamplerFactoryListStatic.GetCount: Integer;
+begin
+  Result := FList.Count;
+end;
+
+function TImageResamplerFactoryListStatic.GetGUID(AIndex: Integer): TGUID;
+begin
+  Result := IImageResamplerFactoryListEntry(FList.Items[AIndex]).GUID;
+end;
+
+function TImageResamplerFactoryListStatic.GetIndexByGUID(
+  const AGUID: TGUID
+): Integer;
 var
   i: Integer;
 begin
-  if FList <> nil then begin
-    for i := 0 to FList.Count - 1 do begin
-      if FList.Objects[i] <> nil then begin
-        IInterface(Pointer(FList.Objects[i]))._Release;
-        FList.Objects[i] := nil;
-      end;
+  Result := -1;
+  for i := 0 to FList.Count - 1 do begin
+    if IsEqualGUID(IImageResamplerFactoryListEntry(FList.Items[i]).GUID, AGUID) then begin
+      Result := i;
+      Break;
     end;
   end;
-  FreeAndNil(FList);
-  FCS := nil;
-  inherited;
 end;
 
-procedure TImageResamplerFactoryListStatic.Add(
-  const AFactory: IImageResamplerFactory;
-  const ACaption: string
-);
+function TImageResamplerFactoryListStatic.Get(AIndex: Integer): IImageResamplerFactory;
 begin
-  FCS.BeginWrite;
-  try
-    FList.AddObject(ACaption, TObject(Pointer(AFactory)));
-    AFactory._AddRef;
-  finally
-    FCS.EndWrite;
-  end;
-end;
-
-function TImageResamplerFactoryListStatic.Count: Integer;
-begin
-  FCS.BeginRead;
-  try
-    Result := FList.Count;
-  finally
-    FCS.EndRead;
-  end;
-end;
-
-function TImageResamplerFactoryListStatic.Get(
-  AIndex: Integer): IImageResamplerFactory;
-begin
-  FCS.BeginRead;
-  try
-    Result := IImageResamplerFactory(Pointer(FList.Objects[AIndex]));
-  finally
-    FCS.EndRead;
-  end;
+  Result := IImageResamplerFactoryListEntry(FList.Items[AIndex]).Factory;
 end;
 
 function TImageResamplerFactoryListStatic.GetCaption(AIndex: Integer): string;
 begin
-  FCS.BeginRead;
-  try
-    Result := FList.Strings[AIndex];
-  finally
-    FCS.EndRead;
-  end;
+  Result := IImageResamplerFactoryListEntry(FList.Items[AIndex]).Caption;
+end;
+
+{ TImageResamplerFactoryListStaticEntry }
+
+constructor TImageResamplerFactoryListStaticEntry.Create(
+  const AFactory: IImageResamplerFactory;
+  const ACaption: string;
+  const AGUID: TGUID
+);
+begin
+  Assert(Assigned(AFactory));
+  inherited Create;
+  FFactory := AFactory;
+  FCaption := ACaption;
+  FGUID := AGUID;
+end;
+
+function TImageResamplerFactoryListStaticEntry.GetCaption: string;
+begin
+  Result := FCaption;
+end;
+
+function TImageResamplerFactoryListStaticEntry.GetFactory: IImageResamplerFactory;
+begin
+  Result := FFactory;
+end;
+
+function TImageResamplerFactoryListStaticEntry.GetGUID: TGUID;
+begin
+  Result := FGUID;
 end;
 
 end.

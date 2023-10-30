@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_MapTypes;
@@ -23,45 +23,123 @@ unit i_MapTypes;
 interface
 
 uses
-  ActiveX,
+  Types,
   i_Changeable,
-  u_MapType;
+  i_MapVersionInfo,
+  i_MapVersionRequest,
+  i_TileObjCache,
+  i_Bitmap32Static,
+  i_VectorItemSubset,
+  i_CoordConverter,
+  i_ZmpInfo,
+  i_MapVersionRequestConfig,
+  i_ContentTypeInfo,
+  i_MapAbilitiesConfig,
+  i_SimpleTileStorageConfig,
+  i_TileDownloadSubsystem,
+  i_TileStorage,
+  i_MapTypeGUIConfig,
+  i_LayerDrawConfig,
+  i_TileDownloaderConfig,
+  i_TileDownloadRequestBuilderConfig,
+  i_ConfigDataWriteProvider;
 
 type
   IMapType = interface
     ['{85957D2C-19D7-4F44-A183-F3679B2A5973}']
-    function GetMapType: TMapType;
-    property MapType: TMapType read GetMapType;
+    procedure SaveConfig(const ALocalConfig: IConfigDataWriteProvider);
 
     function GetGUID: TGUID;
     property GUID: TGUID read GetGUID;
+
+    procedure ClearMemCache;
+    function GetTileShowName(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersion: IMapVersionInfo
+    ): string;
+    function LoadTile(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersion: IMapVersionRequest;
+      IgnoreError: Boolean;
+      const ACache: ITileObjCacheBitmap = nil
+    ): IBitmap32Static;
+    function LoadTileVector(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersion: IMapVersionRequest;
+      IgnoreError: Boolean;
+      const ACache: ITileObjCacheVector = nil
+    ): IVectorItemSubset;
+    function LoadTileUni(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersion: IMapVersionRequest;
+      const ACoordConverterTarget: ICoordConverter;
+      AUsePre, AAllowPartial, IgnoreError: Boolean;
+      const ACache: ITileObjCacheBitmap = nil
+    ): IBitmap32Static;
+    function LoadBitmap(
+      const APixelRectTarget: TRect;
+      const AZoom: byte;
+      const AVersion: IMapVersionRequest;
+      AUsePre, AAllowPartial, IgnoreError: Boolean;
+      const ACache: ITileObjCacheBitmap = nil
+    ): IBitmap32Static;
+    function LoadBitmapUni(
+      const APixelRectTarget: TRect;
+      const AZoom: byte;
+      const AVersion: IMapVersionRequest;
+      const ACoordConverterTarget: ICoordConverter;
+      AUsePre, AAllowPartial, IgnoreError: Boolean;
+      const ACache: ITileObjCacheBitmap = nil
+    ): IBitmap32Static;
+
+    function GetShortFolderName: string;
+
+    function GetZmp: IZmpInfo;
+    property Zmp: IZmpInfo read GetZmp;
+
+    function GetGeoConvert: ICoordConverter;
+    property GeoConvert: ICoordConverter read GetGeoConvert;
+    function GetViewGeoConvert: ICoordConverter;
+    property ViewGeoConvert: ICoordConverter read GetViewGeoConvert;
+    function GetVersionRequestConfig: IMapVersionRequestConfig;
+    property VersionRequestConfig: IMapVersionRequestConfig read GetVersionRequestConfig;
+    function GetContentType: IContentTypeInfoBasic;
+    property ContentType: IContentTypeInfoBasic read GetContentType;
+
+    function GetAbilities: IMapAbilitiesConfig;
+    property Abilities: IMapAbilitiesConfig read GetAbilities;
+    function GetStorageConfig: ISimpleTileStorageConfig;
+    property StorageConfig: ISimpleTileStorageConfig read GetStorageConfig;
+    function GetIsBitmapTiles: Boolean;
+    property IsBitmapTiles: Boolean read GetIsBitmapTiles;
+    function GetIsKmlTiles: Boolean;
+    property IsKmlTiles: Boolean read GetIsKmlTiles;
+
+    function GetTileDownloadSubsystem: ITileDownloadSubsystem;
+    property TileDownloadSubsystem: ITileDownloadSubsystem read GetTileDownloadSubsystem;
+    function GetTileStorage: ITileStorage;
+    property TileStorage: ITileStorage read GetTileStorage;
+    function GetGUIConfig: IMapTypeGUIConfig;
+    property GUIConfig: IMapTypeGUIConfig read GetGUIConfig;
+    function GetLayerDrawConfig: ILayerDrawConfig;
+    property LayerDrawConfig: ILayerDrawConfig read GetLayerDrawConfig;
+    function GetTileDownloaderConfig: ITileDownloaderConfig;
+    property TileDownloaderConfig: ITileDownloaderConfig read GetTileDownloaderConfig;
+    function GetTileDownloadRequestBuilderConfig: ITileDownloadRequestBuilderConfig;
+    property TileDownloadRequestBuilderConfig: ITileDownloadRequestBuilderConfig read GetTileDownloadRequestBuilderConfig;
+    function GetCacheBitmap: ITileObjCacheBitmap;
+    property CacheBitmap: ITileObjCacheBitmap read GetCacheBitmap;
+    function GetCacheVector: ITileObjCacheVector;
+    property CacheVector: ITileObjCacheVector read GetCacheVector;
   end;
 
   IMapTypeChangeable = interface(IChangeable)
     ['{8B43402D-0D20-4A6B-8198-71DDAAADD2A9}']
     function GetStatic: IMapType;
-  end;
-
-  IMapTypeSet = interface
-    ['{45EF5080-01DC-4FE1-92E1-E93574439718}']
-    function IsEqual(const AValue: IMapTypeSet): Boolean;
-    function GetMapTypeByGUID(const AGUID: TGUID): IMapType;
-    function GetIterator: IEnumGUID;
-    function GetCount: Integer;
-  end;
-
-  IMapTypeSetChangeable = interface(IChangeable)
-    ['{F6548515-4FB4-45F1-A742-B886BBCB1024}']
-    function GetStatic: IMapTypeSet;
-  end;
-
-  IMapTypeListStatic = interface
-    ['{0A48D2E0-5C39-4E1A-A438-B50535E6D69B}']
-    function GetCount: Integer;
-    property Count: Integer read GetCount;
-
-    function GetItem(AIndex: Integer): IMapType;
-    property Items[AIndex: Integer]: IMapType read GetItem;
   end;
 
 implementation

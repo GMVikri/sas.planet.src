@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ShortCutSingleConfig;
@@ -26,7 +26,7 @@ uses
   Classes,
   TB2Item,
   i_Bitmap32Static,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_ConfigDataProvider,
   i_ConfigDataWriteProvider,
   i_ShortCutSingleConfig,
@@ -40,7 +40,7 @@ type
     FDefShortCut: TShortCut;
     FShortCut: TShortCut;
     function GetBitmap(
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       AMenu: TTBCustomItem
     ): IBitmap32Static;
   protected
@@ -56,7 +56,7 @@ type
     procedure ApplyShortCut;
   public
     constructor Create(
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       AMenuItem: TTBCustomItem
     );
   end;
@@ -71,7 +71,7 @@ uses
 { TShortCutSingleConfig }
 
 constructor TShortCutSingleConfig.Create(
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   AMenuItem: TTBCustomItem
 );
 begin
@@ -112,7 +112,7 @@ begin
 end;
 
 function TShortCutSingleConfig.GetBitmap(
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   AMenu: TTBCustomItem
 ): IBitmap32Static;
 var
@@ -132,7 +132,7 @@ begin
       end;
       Result :=
         ABitmapFactory.Build(
-          Point(VBitmap.Width, VBitmap.Height),
+          Types.Point(VBitmap.Width, VBitmap.Height),
           VBitmap.Bits
         );
     finally

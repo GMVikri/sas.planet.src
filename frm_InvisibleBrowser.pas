@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_InvisibleBrowser;
@@ -49,7 +49,6 @@ type
       const ALanguageManager: ILanguageManager;
       const AProxyConfig: IProxyConfig
     ); reintroduce;
-    destructor Destroy; override;
     procedure NavigateAndWait(const AUrl: WideString);
   end;
 
@@ -60,6 +59,8 @@ uses
 
 {$R *.dfm}
 
+{ TfrmInvisibleBrowser }
+
 constructor TfrmInvisibleBrowser.Create(
   const ALanguageManager: ILanguageManager;
   const AProxyConfig: IProxyConfig
@@ -67,21 +68,13 @@ constructor TfrmInvisibleBrowser.Create(
 begin
   inherited Create(ALanguageManager);
   FProxyConfig := AProxyConfig;
-  FCS := MakeSyncRW_Big(Self, False);
-end;
-
-destructor TfrmInvisibleBrowser.Destroy;
-begin
-  FCS := nil;
-  inherited;
+  FCS := GSync.SyncBig.Make(Self.ClassName);
 end;
 
 procedure TfrmInvisibleBrowser.FormCreate(Sender: TObject);
 begin
   WebBrowser1.Navigate('about:blank');
 end;
-
-{ TfrmInvisibleBrowser }
 
 procedure TfrmInvisibleBrowser.NavigateAndWait(const AUrl: WideString);
 begin

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BitmapTileSaveLoadFactory;
@@ -25,7 +25,8 @@ interface
 uses
   i_BitmapTileSaveLoad,
   i_BitmapTileSaveLoadFactory,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
+  i_Bitmap32To8Converter,
   i_InternalPerformanceCounter,
   u_BaseInterfacedObject;
 
@@ -35,7 +36,8 @@ type
     IBitmapTileSaveLoadFactory
   )
   private
-    FBitmapFactory: IBitmap32StaticFactory;
+    FBitmapFactory: IBitmap32BufferFactory;
+    FBitmap32To8Converter: IBitmap32To8Converter;
   private
      // BMP
     function CreateBmpLoader(
@@ -76,7 +78,7 @@ type
       const APerfCounterList: IInternalPerformanceCounterList = nil
     ): IBitmapTileSaver;
   public
-    constructor Create(const ABitmapFactory: IBitmap32StaticFactory);
+    constructor Create(const ABitmapFactory: IBitmap32BufferFactory);
   end;
 
 implementation
@@ -84,6 +86,8 @@ implementation
 uses
   u_BitmapTileLibJpeg,
   u_BitmapTileFreeImage,
+  u_Bitmap32To8ConverterByFreeImage,
+  u_Bitmap32To8ConverterByLibImageQuant,
   u_InternalPerformanceCounterFake;
 
 function GetValidPerfCounterList(
@@ -99,10 +103,16 @@ end;
 { TBitmapTileSaveLoadFactory }
 
 constructor TBitmapTileSaveLoadFactory.Create(
-  const ABitmapFactory: IBitmap32StaticFactory);
+  const ABitmapFactory: IBitmap32BufferFactory
+);
 begin
   inherited Create;
   FBitmapFactory := ABitmapFactory;
+  try
+    FBitmap32To8Converter := TBitmap32To8ConverterByLibImageQuant.Create;
+  except
+    FBitmap32To8Converter := TBitmap32To8ConverterByFreeImage.Create;
+  end;
 end;
 
 function TBitmapTileSaveLoadFactory.CreateBmpLoader(
@@ -139,6 +149,7 @@ function TBitmapTileSaveLoadFactory.CreateGifSaver(
 ): IBitmapTileSaver;
 begin
   Result := TBitmapTileFreeImageSaverGif.Create(
+    FBitmap32To8Converter,
     GetValidPerfCounterList(APerfCounterList)
   );
 end;
@@ -165,6 +176,7 @@ begin
         Result := TBitmapTileFreeImageSaverPng.Create(
           ACompressionLevel,
           8,
+          FBitmap32To8Converter,
           GetValidPerfCounterList(APerfCounterList)
         );
       end;
@@ -174,6 +186,7 @@ begin
         Result := TBitmapTileFreeImageSaverPng.Create(
           ACompressionLevel,
           24,
+          nil,
           GetValidPerfCounterList(APerfCounterList)
         );
       end;
@@ -183,6 +196,7 @@ begin
       Result := TBitmapTileFreeImageSaverPng.Create(
         ACompressionLevel,
         32,
+        nil,
         GetValidPerfCounterList(APerfCounterList)
       );
     end;

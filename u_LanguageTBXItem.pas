@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_LanguageTBXItem;
@@ -41,10 +41,10 @@ type
     procedure OnClickItem(Sender: TObject);
   public
     constructor Create(
-      AOwner: TComponent;
-      AParentMenu: TTBCustomItem;
+      const AOwner: TComponent;
+      const AParentMenu: TTBCustomItem;
       const ALanguageManager: ILanguageManager;
-      ALangIndex: Integer
+      const ALangIndex: Integer
     ); reintroduce;
     destructor Destroy; override;
   end;
@@ -58,10 +58,10 @@ uses
 { TLanguageTBXItem }
 
 constructor TLanguageTBXItem.Create(
-  AOwner: TComponent;
-  AParentMenu: TTBCustomItem;
+  const AOwner: TComponent;
+  const AParentMenu: TTBCustomItem;
   const ALanguageManager: ILanguageManager;
-  ALangIndex: Integer
+  const ALangIndex: Integer
 );
 begin
   inherited Create(AOwner);
@@ -83,9 +83,11 @@ end;
 
 destructor TLanguageTBXItem.Destroy;
 begin
-  FLanguageManager.GetChangeNotifier.Remove(FListener);
-  FListener := nil;
-  FLanguageManager := nil;
+  if Assigned(FLanguageManager) and Assigned(FListener) then begin
+    FLanguageManager.GetChangeNotifier.Remove(FListener);
+    FListener := nil;
+    FLanguageManager := nil;
+  end;
   inherited;
 end;
 

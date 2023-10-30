@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MapViewGoto;
@@ -54,6 +54,10 @@ type
     FLastGotoPos: IGotoPosStatic;
     FChangeNotifier: INotifierInternal;
   private
+    procedure GotoLonLat(
+      const ALonLat: TDoublePoint;
+      const AshowMarker: Boolean
+    );
     procedure GotoPos(
       const ALonLat: TDoublePoint;
       const AZoom: Byte;
@@ -79,7 +83,8 @@ uses
   i_CoordConverter,
   i_LocalCoordConverter,
   u_Notifier,
-  u_GeoFun;
+  u_Synchronizer,
+  u_GeoFunc;
 
 { TMapViewGoto }
 
@@ -87,7 +92,10 @@ constructor TMapViewGoto.Create(const AViewPortState: IViewPortState);
 begin
   inherited Create;
   FViewPortState := AViewPortState;
-  FChangeNotifier := TNotifierBase.Create;
+  FChangeNotifier :=
+    TNotifierBase.Create(
+      GSync.SyncVariable.Make(Self.ClassName + 'Notifier')
+    );
   FLastGotoPos := TGotoPosStatic.Create(CEmptyDoublePoint, 0, NaN);
 end;
 
@@ -108,6 +116,7 @@ begin
     Exit;
   end;
   if DoublePointsEqual(ALonLatRect.TopLeft, ALonLatRect.BottomRight) then begin
+    GotoLonLat(ALonLatRect.TopLeft, False);
     Exit;
   end;
   VCenterLonLat.X := (ALonLatRect.Left + ALonLatRect.Right) / 2;
@@ -149,6 +158,16 @@ end;
 function TMapViewGoto.GetLastGotoPos: IGotoPosStatic;
 begin
   Result := FLastGotoPos;
+end;
+
+procedure TMapViewGoto.GotoLonLat(
+  const ALonLat: TDoublePoint;
+  const AshowMarker: Boolean
+);
+begin
+  FLastGotoPos := TGotoPosStatic.Create(ALonLat, FViewPortState.GetCurrentZoom, Now);
+  FViewPortState.ChangeLonLat(ALonLat);
+  if AShowmarker then FChangeNotifier.Notify(nil);
 end;
 
 procedure TMapViewGoto.GotoPos(

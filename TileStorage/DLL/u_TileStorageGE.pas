@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,11 +14,11 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
-unit u_TileStorageGE;
+unit u_TileStorageGE deprecated;
 
 interface
 
@@ -30,10 +30,13 @@ uses
   t_CommonTypes,
   t_DLLCache,
   i_ContentTypeInfo,
-  i_MapVersionConfig,
   i_MapVersionInfo,
+  i_MapVersionFactory,
+  i_MapVersionListStatic,
+  i_MapVersionRequest,
   i_CoordConverter,
   i_TileInfoBasic,
+  i_TileStorageAbilities,
   i_TileStorage,
   i_ContentTypeManager,
   u_TileStorageAbstract;
@@ -78,18 +81,23 @@ type
     ): ITileInfoBasic;
   protected
     // common tile storage interface
-    function GetIsFileCache: Boolean; override;
     function GetTileInfo(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersionInfo: IMapVersionInfo;
       const AMode: TGetTileInfoMode
     ): ITileInfoBasic; override;
+    function GetTileInfoEx(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersionInfo: IMapVersionRequest;
+      const AMode: TGetTileInfoMode
+    ): ITileInfoBasic; override;
 
     function GetTileRectInfo(
       const ARect: TRect;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): ITileRectInfo; override;
 
     function GetTileFileName(
@@ -104,46 +112,31 @@ type
       const AVersionInfo: IMapVersionInfo
     ): Boolean; override;
 
-    procedure SaveTile(
+    function SaveTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersionInfo: IMapVersionInfo;
       const ALoadDate: TDateTime;
       const AContentType: IContentTypeInfoBasic;
-      const AData: IBinaryData
-    ); override;
-
-    procedure SaveTNE(
-      const AXY: TPoint;
-      const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo;
-      const ALoadDate: TDateTime
-    ); override;
+      const AData: IBinaryData;
+      const AIsOverwrite: Boolean
+    ): Boolean; override;
 
     function GetListOfTileVersions(
       const AXY: TPoint;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): IMapVersionListStatic; override;
   public
     constructor Create(
+      const AStorageTypeAbilities: ITileStorageTypeAbilities;
+      const AStorageForceAbilities: ITileStorageAbilities;
       const AGeoConverter: ICoordConverter;
       const AStoragePath: string;
       const AMapVersionFactory: IMapVersionFactory;
       const AContentTypeManager: IContentTypeManager
     );
     destructor Destroy; override;
-  end;
-
-  TTileStorageGE = class(TTileStorageDLL)
-  protected
-    function InternalLib_Initialize: Boolean; override;
-    function InternalLib_CheckInitialized: Boolean; override;
-    function GetTileFileName(
-      const AXY: TPoint;
-      const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
-    ): string; override;
   end;
 
   TTileStorageGC = class(TTileStorageDLL)
@@ -155,13 +148,14 @@ type
 implementation
 
 uses
+  i_InterfaceListSimple,
+  u_InterfaceListSimple,
   u_BinaryDataByMemStream,
   u_MapVersionListStatic,
   u_AvailPicsNMC,
   u_Synchronizer,
   u_TileInfoBasic,
-  u_TileRectInfoShort,
-  u_TileStorageTypeAbilities;
+  u_TileRectInfoShort;
 
 function DLLCache_ConvertImage_Callback(
   const AConvertImage_Context: Pointer;
@@ -360,25 +354,31 @@ end;
 { TTileStorageDLL }
 
 constructor TTileStorageDLL.Create(
+  const AStorageTypeAbilities: ITileStorageTypeAbilities;
+  const AStorageForceAbilities: ITileStorageAbilities;
   const AGeoConverter: ICoordConverter;
   const AStoragePath: string;
   const AMapVersionFactory: IMapVersionFactory;
   const AContentTypeManager: IContentTypeManager
 );
+var
+  VStoragePath: AnsiString;
 begin
   inherited Create(
-    TTileStorageTypeAbilitiesGE.Create,
+    AStorageTypeAbilities,
+    AStorageForceAbilities,
     AMapVersionFactory,
     AGeoConverter,
     AStoragePath
   );
-  FDLLSync := MakeSyncRW_Big(Self);
+  FDLLSync := GSync.SyncBig.Make(Self.ClassName);
   FTileNotExistsTileInfo := TTileInfoBasicNotExists.Create(0, nil);
   FDLLHandle := 0;
   FDLLCacheHandle := nil;
   InternalLib_CleanupProc;
   FMainContentType := AContentTypeManager.GetInfo('image/jpeg');
-  if not InternalLib_SetPath(PAnsiChar(StoragePath)) then begin
+  VStoragePath := AnsiString(StoragePath);
+  if not InternalLib_SetPath(PAnsiChar(VStoragePath)) then begin
     StorageStateInternal.ReadAccess := asEnabled;
   end;
 end;
@@ -394,35 +394,34 @@ end;
 
 destructor TTileStorageDLL.Destroy;
 begin
-  StorageStateInternal.ReadAccess := asDisabled;
+  if Assigned(StorageStateInternal) then begin
+    StorageStateInternal.ReadAccess := asDisabled;
+  end;
 
-  FDLLSync.BeginWrite;
-  try
-    InternalLib_Unload;
-  finally
-    FDLLSync.EndWrite;
+  if Assigned(FDLLSync) then begin
+    FDLLSync.BeginWrite;
+    try
+      InternalLib_Unload;
+    finally
+      FDLLSync.EndWrite;
+    end;
   end;
 
   FTileNotExistsTileInfo := nil;
   FDLLSync := nil;
 
-  inherited Destroy;
-end;
-
-function TTileStorageDLL.GetIsFileCache: Boolean;
-begin
-  Result := False;
+  inherited;
 end;
 
 function TTileStorageDLL.GetListOfTileVersions(
   const AXY: TPoint;
   const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo
+  const AVersionInfo: IMapVersionRequest
 ): IMapVersionListStatic;
 var
   VEnumInfo: TEnumTileVersionsInfo;
   VVersionStoreString: AnsiString;
-  VList: IInterfaceList;
+  VList: IInterfaceListSimple;
   VVersion: IMapVersionInfo;
   i: Integer;
 begin
@@ -431,7 +430,10 @@ begin
   FDLLSync.BeginRead;
   try
     if StorageStateInternal.ReadAccess <> asDisabled then begin
-      VVersionStoreString := AVersionInfo.StoreString;
+      VVersionStoreString := '';
+      if Assigned(AVersionInfo) then begin
+        VVersionStoreString := AVersionInfo.BaseVersion.StoreString;
+      end;
       // init
       FillChar(VEnumInfo, sizeof(VEnumInfo), #0);
       VEnumInfo.Common.Size := SizeOf(VEnumInfo);
@@ -444,7 +446,7 @@ begin
           try
             // make version for each item
             if (TStringList(VEnumInfo.ListOfVersions).Count > 0) then begin
-              VList := TInterfaceList.Create;
+              VList := TInterfaceListSimple.Create;
               for i := 0 to TStringList(VEnumInfo.ListOfVersions).Count - 1 do begin
                 VVersion := MapVersionFactory.CreateByStoreString(TStringList(VEnumInfo.ListOfVersions).Strings[i]);
                 VList.Add(VVersion);
@@ -460,7 +462,7 @@ begin
     FDLLSync.EndRead;
   end;
 
-  Result := TMapVersionListStatic.Create(VList);
+  Result := TMapVersionListStatic.Create(VList.MakeStaticAndClear);
 end;
 
 function TTileStorageDLL.GetTileFileName(
@@ -500,10 +502,26 @@ begin
   Result := QueryTileInternal(AXY, AZoom, AVersionInfo, AMode = gtimWithData);
 end;
 
+function TTileStorageDLL.GetTileInfoEx(
+  const AXY: TPoint;
+  const AZoom: byte;
+  const AVersionInfo: IMapVersionRequest;
+  const AMode: TGetTileInfoMode
+): ITileInfoBasic;
+var
+  VVersion: IMapVersionInfo;
+begin
+  VVersion := nil;
+  if Assigned(AVersionInfo) then begin
+    VVersion := AVersionInfo.BaseVersion;
+  end;
+  Result := QueryTileInternal(AXY, AZoom, VVersion, AMode = gtimWithData);
+end;
+
 function TTileStorageDLL.GetTileRectInfo(
   const ARect: TRect;
   const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo
+  const AVersionInfo: IMapVersionRequest
 ): ITileRectInfo;
 var
   VObj: TGetTileRectFullInfo;
@@ -528,6 +546,8 @@ var
       sl.Free;
     end;
   end;
+var
+  VVersion: IMapVersionInfo;
 begin
   Result := nil;
   //Exit;
@@ -543,7 +563,12 @@ begin
   FDLLSync.BeginRead;
   try
     if StorageStateInternal.ReadAccess <> asDisabled then begin
-      VVersionStoreString := AVersionInfo.StoreString;
+      VVersionStoreString := '';
+      VVersion := nil;
+      if Assigned(AVersionInfo) then begin
+        VVersion := AVersionInfo.BaseVersion;
+        VVersionStoreString := VVersion.StoreString;
+      end;
       // init
       FillChar(VObj, sizeof(VObj), #0);
       VObj.Base.Common.Size := SizeOf(VObj);
@@ -569,7 +594,7 @@ begin
       Result := TTileRectInfoShort.CreateWithOwn(
         ARect,
         AZoom,
-        AVersionInfo,
+        VVersion,
         FMainContentType,
         VObj.InfoArray
       );
@@ -808,63 +833,18 @@ begin
   end;
 end;
 
-procedure TTileStorageDLL.SaveTile(
+function TTileStorageDLL.SaveTile(
   const AXY: TPoint;
   const AZoom: byte;
   const AVersionInfo: IMapVersionInfo;
   const ALoadDate: TDateTime;
   const AContentType: IContentTypeInfoBasic;
-  const AData: IBinaryData
-);
+  const AData: IBinaryData;
+  const AIsOverwrite: Boolean
+): Boolean;
 begin
+  Result := False;
   Abort;
-end;
-
-procedure TTileStorageDLL.SaveTNE(
-  const AXY: TPoint;
-  const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo;
-  const ALoadDate: TDateTime
-);
-begin
-  Abort;
-end;
-
-{ TTileStorageGE }
-
-function TTileStorageGE.InternalLib_CheckInitialized: Boolean;
-begin
-  // common checks
-  Result := inherited InternalLib_CheckInitialized;
-  (*
-  if Result then begin
-    // special checks
-  end;
-  *)
-end;
-
-function TTileStorageGE.InternalLib_Initialize: Boolean;
-begin
-  if (0 = FDLLHandle) then begin
-    FDLLHandle := LoadLibrary('TileStorage_GE.dll');
-  end;
-
-  // common routines
-  Result := inherited InternalLib_Initialize;
-  (*
-  if Result then begin
-    // special routines
-  end;
-  *)
-end;
-
-function  TTileStorageGE.GetTileFileName(
-  const AXY: TPoint;
-  const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo
-): string;
-begin
-  Result := inherited GetTileFileName(AXY, AZoom, AVersionInfo) + 'dbCache.dat';
 end;
 
 { TTileStorageGC }

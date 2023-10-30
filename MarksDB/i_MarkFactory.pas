@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_MarkFactory;
@@ -23,115 +23,56 @@ unit i_MarkFactory;
 interface
 
 uses
-  GR32,
-  t_GeoTypes,
-  i_VectorItemLonLat,
+  i_Appearance,
+  i_GeometryLonLat,
   i_VectorDataItemSimple,
   i_ImportConfig,
   i_Category,
   i_MarkPicture,
-  i_MarksFactoryConfig,
-  i_MarkTemplate,
-  i_MarksSimple;
+  i_MarkFactoryConfig,
+  i_MarkTemplate;
 
 type
   IMarkFactory = interface
     ['{725CB1AC-1393-4889-B621-64C3B4348331}']
-    function CreateNewPoint(
-      const APoint: TDoublePoint;
+    function CreateNewMark(
+      const AGeometry: IGeometryLonLat;
       const AName: string;
       const ADesc: string;
-      const ATemplate: IMarkTemplatePoint = nil
-    ): IMarkPoint;
-    function CreateNewLine(
-      const ALine: ILonLatPath;
-      const AName: string;
-      const ADesc: string;
-      const ATemplate: IMarkTemplateLine = nil
-    ): IMarkLine;
-    function CreateNewPoly(
-      const ALine: ILonLatPolygon;
-      const AName: string;
-      const ADesc: string;
-      const ATemplate: IMarkTemplatePoly = nil
-    ): IMarkPoly;
+      const ATemplate: IMarkTemplate = nil
+    ): IVectorDataItem;
 
     function ReplaceCategory(
-      const AMark: IMark;
+      const AMark: IVectorDataItem;
       const ACategory: ICategory
-    ): IMark;
+    ): IVectorDataItem;
 
-    function ModifyPoint(
-      const ASource: IMarkPoint;
+    function CreateMark(
+      const AGeometry: IGeometryLonLat;
       const AName: string;
-      const APic: IMarkPicture;
-      const ACategory: ICategory;
       const ADesc: string;
-      const APoint: TDoublePoint;
-      ATextColor: TColor32;
-      ATextBgColor: TColor32;
-      AFontSize: Integer;
-      AMarkerSize: Integer
-    ): IMarkPoint;
-    function ModifyLine(
-      const ASource: IMarkLine;
-      const AName: string;
       const ACategory: ICategory;
-      const ADesc: string;
-      const ALine: ILonLatPath;
-      ALineColor: TColor32;
-      ALineWidth: Integer
-    ): IMarkLine;
-    function ModifyPoly(
-      const ASource: IMarkPoly;
-      const AName: string;
-      const ACategory: ICategory;
-      const ADesc: string;
-      const ALine: ILonLatPolygon;
-      ABorderColor: TColor32;
-      AFillColor: TColor32;
-      ALineWidth: Integer
-    ): IMarkPoly;
+      const AAppearance: IAppearance
+    ): IVectorDataItem;
 
-    function SimpleModifyPoint(
-      const ASource: IMarkPoint;
-      const ALonLat: TDoublePoint
-    ): IMarkPoint;
-    function SimpleModifyLine(
-      const ASource: IMarkLine;
-      const ALine: ILonLatPath;
-      const ADesc: string
-    ): IMarkLine;
-    function SimpleModifyPoly(
-      const ASource: IMarkPoly;
-      const ALine: ILonLatPolygon
-    ): IMarkPoly;
+    function ModifyGeometry(
+      const ASource: IVectorDataItem;
+      const AGeometry: IGeometryLonLat;
+      const ADesc: string = ''
+    ): IVectorDataItem;
 
-    function PreparePoint(
-      const AItem: IVectorDataItemPoint;
+    function PrepareMark(
+      const AItem: IVectorDataItem;
       const AName: string;
-      const AParams: IImportPointParams;
-      const ACategory: ICategory;
-      const ADefaultPic: IMarkPicture
-    ): IMarkPoint;
-    function PrepareLine(
-      const AItem: IVectorDataItemLine;
-      const AName: string;
-      const AParams: IImportLineParams;
+      const AParams: IImportMarkParams;
       const ACategory: ICategory
-    ): IMarkLine;
-    function PreparePoly(
-      const AItem: IVectorDataItemPoly;
-      const AName: string;
-      const AParams: IImportPolyParams;
-      const ACategory: ICategory
-    ): IMarkPoly;
+    ): IVectorDataItem;
 
     function GetMarkPictureList: IMarkPictureList;
     property MarkPictureList: IMarkPictureList read GetMarkPictureList;
 
-    function GetConfig: IMarksFactoryConfig;
-    property Config: IMarksFactoryConfig read GetConfig;
+    function GetConfig: IMarkFactoryConfig;
+    property Config: IMarkFactoryConfig read GetConfig;
   end;
 
 implementation

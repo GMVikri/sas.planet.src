@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_LineOnMapEdit;
@@ -24,25 +24,31 @@ interface
 
 uses
   t_GeoTypes,
-  i_VectorItemLonLat,
-  i_ConfigDataElement;
+  i_GeometryLonLat,
+  i_Changeable;
 
 type
-  ILonLatPathWithSelected = interface(ILonLatPath)
-    ['{3ED6ABA4-D618-4A82-A428-EFF74D482161}']
+  ILonLatPathWithSelected = interface
+    ['{E94EE4A3-5B01-4310-B710-252E9FAAD6D7}']
+    function GetGeometry: IGeometryLonLatLine;
+    property Geometry: IGeometryLonLatLine read GetGeometry;
+
     function GetSelectedPoint: TDoublePoint;
     function GetSelectedSegmentIndex: Integer;
     function GetSelectedPointIndex: Integer;
   end;
 
-  ILonLatPolygonWithSelected = interface(ILonLatPolygon)
-    ['{4F1931DF-57E1-4082-A83F-D23FB74F2F28}']
+  ILonLatPolygonWithSelected = interface
+    ['{586F7096-3641-4B08-8D7E-0C74ECC32096}']
+    function GetGeometry: IGeometryLonLatPolygon;
+    property Geometry: IGeometryLonLatPolygon read GetGeometry;
+
     function GetSelectedPoint: TDoublePoint;
     function GetSelectedSegmentIndex: Integer;
     function GetSelectedPointIndex: Integer;
   end;
 
-  ILineOnMapEdit = interface(IConfigDataElement)
+  ILineOnMapEdit = interface(IChangeable)
     ['{BD78781E-F5E0-406B-AE16-E5015BA87743}']
     procedure SetSelectedPoint(
       ASegmentIndex: Integer;
@@ -66,7 +72,7 @@ type
     property Path: ILonLatPathWithSelected read GetPath;
 
     procedure SetPath(const AValue: ILonLatPathWithSelected); overload;
-    procedure SetPath(const AValue: ILonLatPath); overload;
+    procedure SetPath(const AValue: IGeometryLonLatLine); overload;
   end;
 
   IPolygonOnMapEdit = interface(ILineOnMapEdit)
@@ -75,7 +81,7 @@ type
     property Polygon: ILonLatPolygonWithSelected read GetPolygon;
 
     procedure SetPolygon(const AValue: ILonLatPolygonWithSelected); overload;
-    procedure SetPolygon(const AValue: ILonLatPolygon); overload;
+    procedure SetPolygon(const AValue: IGeometryLonLatPolygon); overload;
   end;
 
 implementation

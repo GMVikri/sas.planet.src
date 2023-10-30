@@ -31,11 +31,16 @@ type
 implementation
 
 uses
-  u_GeoFun,
+  u_GeoFunc,
   c_CoordConverter,
   i_CoordConverterFactory,
+  i_HashFunction,
+  u_HashFunctionCityHash,
+  u_HashFunctionWithCounter,
   u_CoordConverterFactorySimple,
   u_ProjectionInfo,
+  u_InternalPerformanceCounterFake,
+  u_DatumFactory,
   u_EnumDoublePointsByArray,
   u_EnumDoublePointLine2Poly;
 
@@ -54,14 +59,26 @@ end;
 
 procedure TestTEnumDoublePointLine2Poly.SetUp;
 var
+  VHashFunction: IHashFunction;
   VConveterFactory: ICoordConverterFactory;
+  VDatumFactory: IDatumFactory;
 begin
   inherited;
+  VHashFunction :=
+    THashFunctionWithCounter.Create(
+      THashFunctionCityHash.Create,
+      TInternalPerformanceCounterFake.Create
+    );
   FZoom := 18;
   FRadius := 1000;
-  VConveterFactory := TCoordConverterFactorySimple.Create;
+  VDatumFactory := TDatumFactory.Create(VHashFunction);
+  VConveterFactory :=
+    TCoordConverterFactorySimple.Create(
+      VHashFunction,
+      VDatumFactory
+    );
   FConverter := VConveterFactory.GetCoordConverterByCode(CGoogleProjectionEPSG, CTileSplitQuadrate256x256);
-  FProjection := TProjectionInfo.Create(FConverter, FZoom);
+  FProjection := TProjectionInfo.Create(0, FConverter, FZoom);
 end;
 
 procedure TestTEnumDoublePointLine2Poly.TestFivePoints;

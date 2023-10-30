@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_SimpleTileStorageConfig;
@@ -25,7 +25,6 @@ interface
 uses
   i_ConfigDataProvider,
   i_ConfigDataWriteProvider,
-  i_CoordConverter,
   i_SimpleTileStorageConfig,
   u_ConfigDataElementBase;
 
@@ -50,8 +49,6 @@ type
     procedure DoReadConfig(const AConfigData: IConfigDataProvider); override;
     procedure DoWriteConfig(const AConfigData: IConfigDataWriteProvider); override;
   private
-    function GetCoordConverter: ICoordConverter;
-
     function GetCacheTypeCode: Integer;
     procedure SetCacheTypeCode(AValue: Integer);
 
@@ -93,6 +90,8 @@ implementation
 
 uses
   c_CacheTypeCodes,
+  i_TileStorageAbilities,
+  u_TileStorageAbilities,
   u_SimpleTileStorageConfigStatic;
 
 { TSimpleTileStorageConfig }
@@ -107,10 +106,10 @@ begin
   FCacheTypeCode := FDefConfig.CacheTypeCode;
   FNameInCache := FDefConfig.NameInCache;
 
-  FIsReadOnly := FDefConfig.IsReadOnly;
-  FAllowDelete := FDefConfig.AllowDelete;
-  FAllowAdd := FDefConfig.AllowAdd;
-  FAllowReplace := FDefConfig.AllowReplace;
+  FIsReadOnly := FDefConfig.Abilities.IsReadOnly;
+  FAllowDelete := FDefConfig.Abilities.AllowDelete;
+  FAllowAdd := FDefConfig.Abilities.AllowAdd;
+  FAllowReplace := FDefConfig.Abilities.AllowReplace;
   FUseMemCache := FDefConfig.UseMemCache;
   FMemCacheCapacity := FDefConfig.MemCacheCapacity;
   FMemCacheTTL := FDefConfig.MemCacheTTL;
@@ -120,17 +119,21 @@ end;
 function TSimpleTileStorageConfig.CreateStatic: IInterface;
 var
   VStatic: ISimpleTileStorageConfigStatic;
+  VStorageAbilities: ITileStorageAbilities;
 begin
+  VStorageAbilities :=
+    TTileStorageAbilities.Create(
+      FIsReadOnly,
+      FAllowAdd,
+      FAllowDelete,
+      FAllowReplace
+    );
   VStatic :=
     TSimpleTileStorageConfigStatic.Create(
-      FDefConfig.CoordConverter,
       FCacheTypeCode,
       FNameInCache,
       FDefConfig.TileFileExt,
-      FIsReadOnly,
-      FAllowDelete,
-      FAllowAdd,
-      FAllowReplace,
+      VStorageAbilities,
       FUseMemCache,
       FMemCacheCapacity,
       FMemCacheTTL,
@@ -167,7 +170,7 @@ begin
   end else begin
     AConfigData.DeleteValue('NameInCache');
   end;
-  if FIsReadOnly <> FDefConfig.IsReadOnly then begin
+  if FIsReadOnly <> FDefConfig.Abilities.IsReadOnly then begin
     AConfigData.WriteBool('IsReadOnly', FIsReadOnly);
   end else begin
     AConfigData.DeleteValue('IsReadOnly');
@@ -212,11 +215,6 @@ begin
   finally
     UnlockRead;
   end;
-end;
-
-function TSimpleTileStorageConfig.GetCoordConverter: ICoordConverter;
-begin
-  Result := FDefConfig.CoordConverter;
 end;
 
 function TSimpleTileStorageConfig.GetIsReadOnly: Boolean;
@@ -295,7 +293,7 @@ var
 begin
   LockWrite;
   try
-    VValue := FDefConfig.AllowAdd and (not FIsReadOnly) and AValue;
+    VValue := FDefConfig.Abilities.AllowAdd and (not FIsReadOnly) and AValue;
     if FAllowAdd <> VValue then begin
       FAllowAdd := VValue;
       SetChanged;
@@ -311,7 +309,7 @@ var
 begin
   LockWrite;
   try
-    VValue := FDefConfig.AllowDelete and (not FIsReadOnly) and AValue;
+    VValue := FDefConfig.Abilities.AllowDelete and (not FIsReadOnly) and AValue;
     if FAllowDelete <> VValue then begin
       FAllowDelete := VValue;
       SetChanged;
@@ -327,7 +325,7 @@ var
 begin
   LockWrite;
   try
-    VValue := FDefConfig.AllowReplace and (not FIsReadOnly) and AValue;
+    VValue := FDefConfig.Abilities.AllowReplace and (not FIsReadOnly) and AValue;
     if FAllowReplace <> VValue then begin
       FAllowReplace := VValue;
       SetChanged;
@@ -360,7 +358,7 @@ var
 begin
   LockWrite;
   try
-    VValue := FDefConfig.IsReadOnly or (FNameInCache = '') or AValue;
+    VValue := FDefConfig.Abilities.IsReadOnly or (FNameInCache = '') or AValue;
     if FIsReadOnly <> VValue then begin
       FIsReadOnly := VValue;
       SetAllowDelete(FAllowDelete);

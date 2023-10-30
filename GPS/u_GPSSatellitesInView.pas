@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GPSSatellitesInView;
@@ -24,24 +24,20 @@ interface
 
 uses
   Windows,
-  ActiveX,
-  Classes,
-  SysUtils,
-  i_GPS,
   vsagps_public_base,
+  i_InterfaceListStatic,
+  i_GPS,
   u_BaseInterfacedObject;
 
 type
   TGPSSatellitesInView = class(TBaseInterfacedObject, IGPSSatellitesInView)
   private
-    FItemsGP: IInterfaceList;
-    FItemsGL: IInterfaceList;
+    FItemsGP: IInterfaceListStatic;
+    FItemsGL: IInterfaceListStatic;
     FFixSatsALL: TVSAGPS_FIX_ALL;
-    procedure InternalCreateItems(
-      const AItemsCountTI: Integer;
-      AItemsTI: PUnknownList;
-      var AItemsIfaceTI: IInterfaceList
-    );
+    function InternalCreateItems(
+      const ASource: IGPSSatelliteInfoList
+    ): IInterfaceListStatic;
   private
     function GetCount(const ATalkerID: AnsiString): Byte; stdcall;
     function GetFixCount(const ATalkerID: AnsiString): Byte; stdcall;
@@ -65,38 +61,29 @@ type
     function GetCountForAllTalkerIDs(const AOnlyForFixed: Boolean): Byte; stdcall;
   public
     constructor Create(
-      const AItemsCountGP: Integer;
-      AItemsGP: PUnknownList;
-      const AItemsCountGL: Integer;
-      AItemsGL: PUnknownList
+      const AItemsGP, AItemsGL: IGPSSatelliteInfoList
     );
-    destructor Destroy; override;
   end;
 
 implementation
 
+uses
+  ALString,
+  i_InterfaceListSimple,
+  u_InterfaceListSimple;
+
 { TGPSSatellitesInView }
 
 constructor TGPSSatellitesInView.Create(
-  const AItemsCountGP: Integer;
-  AItemsGP: PUnknownList;
-  const AItemsCountGL: Integer;
-  AItemsGL: PUnknownList
+  const AItemsGP, AItemsGL: IGPSSatelliteInfoList
 );
 begin
   inherited Create;
   // init
   SetFixedSats(nil);
   // make
-  InternalCreateItems(AItemsCountGP, AItemsGP, FItemsGP);
-  InternalCreateItems(AItemsCountGL, AItemsGL, FItemsGL);
-end;
-
-destructor TGPSSatellitesInView.Destroy;
-begin
-  FItemsGP := nil;
-  FItemsGL := nil;
-  inherited;
+  FItemsGP := InternalCreateItems(AItemsGP);
+  FItemsGL := InternalCreateItems(AItemsGL);
 end;
 
 function TGPSSatellitesInView.EnumerateTalkerID(var ATalkerID: AnsiString): Boolean;
@@ -123,7 +110,7 @@ begin
     // get next talker_id
 
     // check glonass after gps (the only)
-    if SameText(ATalkerID, nmea_ti_GPS) then begin
+    if ALSameText(ATalkerID, nmea_ti_GPS) then begin
       // check for glonass
       if (nil <> FItemsGL) and (0 < FItemsGL.Count) then begin
         // GPS
@@ -140,7 +127,7 @@ end;
 
 function TGPSSatellitesInView.GetCount(const ATalkerID: AnsiString): Byte;
 begin
-  if SameText(ATalkerID, nmea_ti_GLONASS) then begin
+  if ALSameText(ATalkerID, nmea_ti_GLONASS) then begin
     // glonass
     if FItemsGL <> nil then begin
       Result := FItemsGL.Count;
@@ -217,7 +204,7 @@ function TGPSSatellitesInView.GetItem(
   const AIndex: Byte
 ): IGPSSatelliteInfo;
 begin
-  if SameText(ATalkerID, nmea_ti_GLONASS) then begin
+  if ALSameText(ATalkerID, nmea_ti_GLONASS) then begin
     // glonass
     if FItemsGL <> nil then begin
       Result := IGPSSatelliteInfo(FItemsGL[AIndex]);
@@ -234,32 +221,36 @@ begin
   end;
 end;
 
-procedure TGPSSatellitesInView.InternalCreateItems(
-  const AItemsCountTI: Integer;
-  AItemsTI: PUnknownList;
-  var AItemsIfaceTI: IInterfaceList
-);
+function TGPSSatellitesInView.InternalCreateItems(
+  const ASource: IGPSSatelliteInfoList
+): IInterfaceListStatic;
 var
   i: Integer;
   VItemCount: Integer;
   VItem: IGPSSatelliteInfo;
+  VList: IInterfaceListSimple;
 begin
-  AItemsIfaceTI := nil;
+  Result := nil;
 
-  if (AItemsCountTI > 0) and (AItemsTI <> nil) then begin
-    VItemCount := AItemsCountTI;
-    if VItemCount > cNmea_max_sat_count then begin
-      VItemCount := cNmea_max_sat_count;
-    end;
+  if (nil=ASource) then
+    Exit;
 
-    AItemsIfaceTI := TInterfaceList.Create;
-    AItemsIfaceTI.Capacity := VItemCount;
+  VItemCount := ASource.Count;
+  if (0=VItemCount) then
+    Exit;
 
-    for i := 0 to VItemCount - 1 do begin
-      VItem := IGPSSatelliteInfo(AItemsTI^[i]);
-      AItemsIfaceTI.Add(VItem);
-    end;
+  if VItemCount > cNmea_max_sat_count then begin
+    VItemCount := cNmea_max_sat_count;
   end;
+
+  VList := TInterfaceListSimple.Create;
+  VList.Capacity := VItemCount;
+
+  for i := 0 to VItemCount - 1 do begin
+    VItem := ASource[i];
+    VList.Add(VItem);
+  end;
+  Result := VList.MakeStaticAndClear;
 end;
 
 procedure TGPSSatellitesInView.SetFixedSats(AFixSatsALL: PVSAGPS_FIX_ALL);

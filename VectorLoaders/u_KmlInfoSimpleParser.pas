@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_KmlInfoSimpleParser;
@@ -27,12 +27,12 @@ uses
   SysUtils,
   t_GeoTypes,
   i_BinaryData,
+  i_VectorItemSubsetBuilder,
   i_VectorDataFactory,
-  i_VectorItemsFactory,
+  i_GeometryLonLatFactory,
   i_VectorDataItemSimple,
   i_VectorItemSubset,
   i_DoublePointsAggregator,
-  i_InternalPerformanceCounter,
   i_VectorDataLoader,
   BMSEARCH,
   u_BaseInterfacedObject;
@@ -40,8 +40,9 @@ uses
 type
   TKmlInfoSimpleParser = class(TBaseInterfacedObject, IVectorDataLoader)
   private
-    FLoadKmlStreamCounter: IInternalPerformanceCounter;
-    FFactory: IVectorItemsFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+    FVectorDataFactory: IVectorDataFactory;
+    FVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
 
     FFormat: TFormatSettings;
     FBMSrchPlacemark: TSearchBM;
@@ -69,43 +70,39 @@ type
     ): PAnsiChar;
     function parse(
       const buffer: AnsiString;
-      const AList: IInterfaceList;
+      const AList: IVectorItemSubsetBuilder;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): boolean;
     function parseCoordinates(
       AText: PAnsiChar;
       ALen: integer;
       const APointsAggregator: IDoublePointsAggregator
     ): boolean;
-    procedure parseName(var Name: String);
-    procedure parseDescription(var Description: String);
+    function parseName(Name: AnsiString): string;
+    function parseDescription(Description: AnsiString): string;
     function BuildItem(
       const AName, ADesc: string;
       const APointsAggregator: IDoublePointsAggregator;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
-    ): IVectorDataItemSimple;
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
+    ): IVectorDataItem;
     function LoadFromStreamInternal(
       AStream: TStream;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): IVectorItemSubset;
   private
-    function LoadFromStream(
-      AStream: TStream;
-      const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
-    ): IVectorItemSubset;
     function Load(
       const AData: IBinaryData;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): IVectorItemSubset;
   public
     constructor Create(
-      const AFactory: IVectorItemsFactory;
-      const APerfCounterList: IInternalPerformanceCounterList
+      const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+      const AVectorDataFactory: IVectorDataFactory;
+      const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory
     );
     destructor Destroy; override;
   end;
@@ -113,12 +110,12 @@ type
 implementation
 
 uses
-  StrUtils,
+  ALString,
   cUnicodeCodecs,
+  i_GeometryLonLat,
   u_StreamReadOnlyByBinaryData,
   u_DoublePointsAggregator,
-  u_VectorDataItemSubset,
-  u_GeoFun;
+  u_GeoFunc;
 
 { TKmlInfoSimpleParser }
 
@@ -126,48 +123,49 @@ function TKmlInfoSimpleParser.BuildItem(
   const AName, ADesc: string;
   const APointsAggregator: IDoublePointsAggregator;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
-): IVectorDataItemSimple;
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
+): IVectorDataItem;
 var
   VPointCount: Integer;
+  VGeometry: IGeometryLonLat;
 begin
   Result := nil;
   VPointCount := APointsAggregator.Count;
   if VPointCount > 0 then begin
+    VGeometry := nil;
     if VPointCount = 1 then begin
-      Result := AFactory.BuildPoint(AIdData, AName, ADesc, APointsAggregator.Points[0]);
+      if not PointIsEmpty(APointsAggregator.Points[0]) then begin
+        VGeometry := FVectorGeometryLonLatFactory.CreateLonLatPoint(APointsAggregator.Points[0]);
+      end;
     end else begin
       if DoublePointsEqual(APointsAggregator.Points[0], APointsAggregator.Points[VPointCount - 1]) then begin
-        Result :=
-          AFactory.BuildPoly(
-            AIdData,
-            AName,
-            ADesc,
-            FFactory.CreateLonLatPolygon(APointsAggregator.Points, VPointCount)
-          );
+        VGeometry := FVectorGeometryLonLatFactory.CreateLonLatMultiPolygon(APointsAggregator.Points, VPointCount);
       end else begin
-        Result :=
-          AFactory.BuildPath(
-            AIdData,
-            AName,
-            ADesc,
-            FFactory.CreateLonLatPath(APointsAggregator.Points, VPointCount)
-          );
+        VGeometry := FVectorGeometryLonLatFactory.CreateLonLatMultiLine(APointsAggregator.Points, VPointCount);
       end;
+    end;
+    if Assigned(VGeometry) then begin
+      Result :=
+        FVectorDataFactory.BuildItem(
+          AVectorDataItemMainInfoFactory.BuildMainInfo(AIdData, AName, ADesc),
+          nil,
+          VGeometry
+        );
     end;
   end;
 end;
 
 constructor TKmlInfoSimpleParser.Create(
-  const AFactory: IVectorItemsFactory;
-  const APerfCounterList: IInternalPerformanceCounterList
+  const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+  const AVectorDataFactory: IVectorDataFactory;
+  const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory
 );
 begin
   inherited Create;
-  FFactory := AFactory;
-  if APerfCounterList <> nil then begin
-    FLoadKmlStreamCounter := APerfCounterList.CreateAndAddNewCounter('LoadKmlStream');
-  end;
+  FVectorGeometryLonLatFactory := AVectorGeometryLonLatFactory;
+  FVectorDataFactory := AVectorDataFactory;
+  FVectorItemSubsetBuilderFactory := AVectorItemSubsetBuilderFactory;
+
   FFormat.DecimalSeparator := '.';
   FBMSrchPlacemark := TSearchBM.Create('<Placemark');
   FBMSrchPlacemarkE := TSearchBM.Create('</Placemark');
@@ -199,7 +197,7 @@ end;
 function TKmlInfoSimpleParser.Load(
   const AData: IBinaryData;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): IVectorItemSubset;
 var
   VStream: TStreamReadOnlyByBinaryData;
@@ -207,35 +205,15 @@ begin
   Result := nil;
   VStream := TStreamReadOnlyByBinaryData.Create(AData);
   try
-    Result := LoadFromStream(VStream, AIdData, AFactory);
+    Result := LoadFromStreamInternal(VStream, AIdData, AVectorDataItemMainInfoFactory);
   finally
     VStream.Free;
   end;
 end;
 
-function TKmlInfoSimpleParser.LoadFromStream(
-  AStream: TStream;
-  const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
-): IVectorItemSubset;
-var
-  VCounterContext: TInternalPerformanceCounterContext;
-begin
-  if FLoadKmlStreamCounter <> nil then begin
-    VCounterContext := FLoadKmlStreamCounter.StartOperation;
-    try
-      Result := LoadFromStreamInternal(AStream, AIdData, AFactory);
-    finally
-      FLoadKmlStreamCounter.FinishOperation(VCounterContext);
-    end;
-  end else begin
-    Result := LoadFromStreamInternal(AStream, AIdData, AFactory);
-  end;
-end;
-
 function TKmlInfoSimpleParser.LoadFromStreamInternal(AStream: TStream;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): IVectorItemSubset;
   function GetAnsiString(AStream: TStream): AnsiString;
   var
@@ -272,68 +250,68 @@ function TKmlInfoSimpleParser.LoadFromStreamInternal(AStream: TStream;
   end;
 var
   VKml: AnsiString;
-  VList: IInterfaceList;
+  VList: IVectorItemSubsetBuilder;
 begin
   Result := nil;
   if AStream.Size > 0 then begin
     VKml := GetAnsiString(AStream);
     if VKml <> '' then begin
-      VList := TInterfaceList.Create;
-      parse(VKml, VList, AIdData, AFactory);
-      Result := TVectorItemSubset.Create(VList);
+      VList := FVectorItemSubsetBuilderFactory.Build;
+      parse(VKml, VList, AIdData, AVectorDataItemMainInfoFactory);
+      Result := VList.MakeStaticAndClear;
     end else begin
       Assert(False, 'KML data reader - Unknown error');
     end;
   end;
 end;
 
-procedure TKmlInfoSimpleParser.parseName(var Name: String);
+function TKmlInfoSimpleParser.parseName(Name: AnsiString): string;
 var
   pb: integer;
 begin
-  Name := Utf8ToAnsi(Name);
-  pb := PosEx('<![CDATA[', Name, 1);
+  pb := ALPosEx('<![CDATA[', Name, 1);
   if pb > 0 then begin
-    Name := copy(Name, pb + 9, PosEx(']]>', Name, 1) - (pb + 9));
+    Name := ALCopyStr(Name, pb + 9, ALPosEx(']]>', Name, 1) - (pb + 9));
   end;
+  Result := Utf8ToAnsi(Name);
 end;
 
-procedure TKmlInfoSimpleParser.parseDescription(var Description: String);
+function TKmlInfoSimpleParser.parseDescription(Description: AnsiString): string;
 var
   pb: integer;
   iip: integer;
 begin
-  Description := Utf8ToAnsi(Description);
-  pb := PosEx('<![CDATA[', Description, 1);
+  pb := ALPosEx('<![CDATA[', Description, 1);
   if pb > 0 then begin
-    Description := copy(Description, pb + 9, PosEx(']]>', Description, 1) - (pb + 9));
+    Description := ALCopyStr(Description, pb + 9, ALPosEx(']]>', Description, 1) - (pb + 9));
   end;
-  iip := PosEx('&lt;', Description, 1);
+  iip := ALPosEx('&lt;', Description, 1);
   while iip > 0 do begin
     Description[iip] := '<';
     Delete(Description, iip + 1, 3);
-    iip := PosEx('&lt;', Description, iip);
+    iip := ALPosEx('&lt;', Description, iip);
   end;
-  iip := PosEx('&gt;', Description, 1);
+  iip := ALPosEx('&gt;', Description, 1);
   while iip > 0 do begin
     Description[iip] := '>';
     Delete(Description, iip + 1, 3);
-    iip := PosEx('&gt;', Description, iip);
+    iip := ALPosEx('&gt;', Description, iip);
   end;
+  Result := Utf8ToAnsi(Description);
 end;
 
 function TKmlInfoSimpleParser.parse(
   const buffer: AnsiString;
-  const AList: IInterfaceList;
+  const AList: IVectorItemSubsetBuilder;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): boolean;
 var
   position, PosStartPlace, PosTag1, PosTag2, PosTag3, PosEndPlace, sLen: integer;
   sStart: Cardinal;
   VName: string;
   VDescription: string;
-  VItem: IVectorDataItemSimple;
+  VItem: IVectorDataItem;
   VPointsAggregator: IDoublePointsAggregator;
 begin
   result := true;
@@ -357,8 +335,7 @@ begin
             if (PosTag2 > PosStartPlace) and (PosTag2 < PosEndPlace) and (PosTag2 > PosTag1) then begin
               PosTag3 := Cardinal(FBMSrchNameE.Search(@buffer[PosTag2], PosEndPlace - PosTag2 + 1)) - sStart + 1;
               if (PosTag3 > PosStartPlace) and (PosTag3 < PosEndPlace) and (PosTag3 > PosTag2) then begin
-                VName := copy(buffer, PosTag2 + 1, PosTag3 - (PosTag2 + 1));
-                parseName(VName);
+                VName := parseName(ALCopyStr(buffer, PosTag2 + 1, PosTag3 - (PosTag2 + 1)));
               end;
             end;
           end;
@@ -369,8 +346,7 @@ begin
             if (PosTag2 > PosStartPlace) and (PosTag2 < PosEndPlace) and (PosTag2 > PosTag1) then begin
               PosTag3 := Cardinal(FBMSrchDescE.Search(@buffer[PosTag2], PosEndPlace - PosTag2 + 1)) - sStart + 1;
               if (PosTag3 > PosStartPlace) and (PosTag3 < PosEndPlace) and (PosTag3 > PosTag2) then begin
-                VDescription := copy(buffer, PosTag2 + 1, PosTag3 - (PosTag2 + 1));
-                parseDescription(VDescription);
+                VDescription := parseDescription(copy(buffer, PosTag2 + 1, PosTag3 - (PosTag2 + 1)));
               end;
             end;
           end;
@@ -392,7 +368,7 @@ begin
             result := false;
           end;
         end;
-        VItem := BuildItem(VName, VDescription, VPointsAggregator, AIdData, AFactory);
+        VItem := BuildItem(VName, VDescription, VPointsAggregator, AIdData, AVectorDataItemMainInfoFactory);
         if VItem <> nil then begin
           AList.Add(VItem);
         end;

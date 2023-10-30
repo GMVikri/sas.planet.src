@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_MarkEditPoly;
@@ -33,11 +33,12 @@ uses
   StdCtrls,
   ExtCtrls,
   Buttons,
-  GR32,
   u_CommonFormAndFrameParents,
+  i_Appearance,
+  i_AppearanceOfMarkFactory,
   i_PathConfig,
   i_LanguageManager,
-  i_MarksSimple,
+  i_VectorDataItemSimple,
   i_MarkFactory,
   i_MarkCategoryDB,
   fr_MarkDescription,
@@ -84,28 +85,34 @@ type
   private
     FMarkFactory: IMarkFactory;
     FCategoryDB: IMarkCategoryDB;
+    FAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
     frMarkDescription: TfrMarkDescription;
     frMarkCategory: TfrMarkCategorySelectOrAdd;
+    function MakeAppearance: IAppearance;
   public
     constructor Create(
       const ALanguageManager: ILanguageManager;
       const AMediaPath: IPathConfig;
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const AMarkFactory: IMarkFactory;
       const ACategoryDB: IMarkCategoryDB
     ); reintroduce;
     destructor Destroy; override;
     function EditMark(
-      const AMark: IMarkPoly;
+      const AMark: IVectorDataItem;
       const AIsNewMark: Boolean;
       var AVisible: Boolean
-    ): IMarkPoly;
+    ): IVectorDataItem;
   end;
 
 implementation
 
 uses
+  GR32,
+  i_AppearanceOfVectorItem,
+  i_Category,
   i_MarkTemplate,
-  i_MarksFactoryConfig,
+  i_MarkFactoryConfig,
   u_ResStrings;
 
 {$R *.dfm}
@@ -113,12 +120,14 @@ uses
 constructor TfrmMarkEditPoly.Create(
   const ALanguageManager: ILanguageManager;
   const AMediaPath: IPathConfig;
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const AMarkFactory: IMarkFactory;
   const ACategoryDB: IMarkCategoryDB
 );
 begin
   inherited Create(ALanguageManager);
   FCategoryDB := ACategoryDB;
+  FAppearanceOfMarkFactory := AAppearanceOfMarkFactory;
   FMarkFactory := AMarkFactory;
 
   frMarkDescription := TfrMarkDescription.Create(ALanguageManager, AMediaPath);
@@ -137,20 +146,40 @@ begin
 end;
 
 function TfrmMarkEditPoly.EditMark(
-  const AMark: IMarkPoly;
+  const AMark: IVectorDataItem;
   const AIsNewMark: Boolean;
   var AVisible: Boolean
-): IMarkPoly;
+): IVectorDataItem;
+var
+  VAppearanceBorder: IAppearancePolygonBorder;
+  VAppearanceFill: IAppearancePolygonFill;
+  VCategory: ICategory;
+  VMarkWithCategory: IVectorDataItemWithCategory;
 begin
-  frMarkCategory.Init(AMark.Category);
+  VCategory := nil;
+  if Supports(AMark.MainInfo, IVectorDataItemWithCategory, VMarkWithCategory) then begin
+    VCategory := VMarkWithCategory.Category;
+  end;
+  frMarkCategory.Init(VCategory);
   try
     edtName.Text:=AMark.Name;
     frMarkDescription.Description:=AMark.Desc;
-    seLineTransp.Value:=100-round(AlphaComponent(AMark.LineColor)/255*100);
-    seFillTransp.Value:=100-round(AlphaComponent(AMark.FillColor)/255*100);
-    seLineWidth.Value:=AMark.LineWidth;
-    clrbxLineColor.Selected:=WinColor(AMark.LineColor);
-    clrbxFillColor.Selected:=WinColor(AMark.FillColor);
+    if Supports(AMark.Appearance, IAppearancePolygonBorder, VAppearanceBorder) then begin
+      seLineTransp.Value := 100-round(AlphaComponent(VAppearanceBorder.LineColor)/255*100);
+      seLineWidth.Value := VAppearanceBorder.LineWidth;
+      clrbxLineColor.Selected := WinColor(VAppearanceBorder.LineColor);
+    end else begin
+      seLineTransp.Value := 0;
+      seLineWidth.Value :=0;
+      clrbxLineColor.Selected := WinColor(clBlack32);
+    end;
+    if Supports(AMark.Appearance, IAppearancePolygonFill, VAppearanceFill) then begin
+      seFillTransp.Value := 100-round(AlphaComponent(VAppearanceFill.FillColor)/255*100);
+      clrbxFillColor.Selected := WinColor(VAppearanceFill.FillColor);
+    end else begin
+      seFillTransp.Value := 0;
+      clrbxFillColor.Selected := 0;
+    end;
     chkVisible.Checked:= AVisible;
     if AIsNewMark then begin
       Caption:=SAS_STR_AddNewPoly;
@@ -160,15 +189,12 @@ begin
     Self.PopupParent := Application.MainForm;
     if ShowModal=mrOk then begin
       Result :=
-        FMarkFactory.ModifyPoly(
-          AMark,
+        FMarkFactory.CreateMark(
+          AMark.Geometry,
           edtName.Text,
-          frMarkCategory.GetCategory,
           frMarkDescription.Description,
-          AMark.Line,
-          SetAlpha(Color32(clrbxLineColor.Selected),round(((100-seLineTransp.Value)/100)*256)),
-          SetAlpha(Color32(clrbxFillColor.Selected),round(((100-seFillTransp.Value)/100)*256)),
-          seLineWidth.Value
+          frMarkCategory.GetCategory,
+          MakeAppearance
         );
       AVisible := chkVisible.Checked;
     end else begin
@@ -186,6 +212,16 @@ begin
   edtName.SetFocus;
 end;
 
+function TfrmMarkEditPoly.MakeAppearance: IAppearance;
+begin
+  Result :=
+    FAppearanceOfMarkFactory.CreatePolygonAppearance(
+      SetAlpha(Color32(clrbxLineColor.Selected),round(((100-seLineTransp.Value)/100)*256)),
+      seLineWidth.Value,
+      SetAlpha(Color32(clrbxFillColor.Selected),round(((100-seFillTransp.Value)/100)*256))
+    );
+end;
+
 procedure TfrmMarkEditPoly.btnOkClick(Sender: TObject);
 begin
   ModalResult := mrOk;
@@ -200,10 +236,8 @@ begin
     VConfig := FMarkFactory.Config.PolyTemplateConfig;
     VTemplate :=
       VConfig.CreateTemplate(
-        frMarkCategory.GetCategory,
-        SetAlpha(Color32(clrbxLineColor.Selected),round(((100-seLineTransp.Value)/100)*256)),
-        SetAlpha(Color32(clrbxFillColor.Selected),round(((100-seFillTransp.Value)/100)*256)),
-        seLineWidth.Value
+        MakeAppearance,
+        frMarkCategory.GetCategory
       );
     VConfig.DefaultTemplate := VTemplate;
   end;

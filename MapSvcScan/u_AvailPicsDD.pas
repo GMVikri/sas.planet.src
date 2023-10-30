@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_AvailPicsDD;
@@ -33,9 +33,7 @@ uses
   i_DownloadResultFactory,
   i_DownloadRequest,
   i_MapSvcScanStorage,
-  u_DownloadRequest,
-  u_AvailPicsAbstract,
-  u_BinaryDataByMemStream;
+  u_AvailPicsAbstract;
 
 type
   TAvailPicsDD = class(TAvailPicsByKey)
@@ -68,16 +66,16 @@ implementation
 
 uses
   forms,
-  xmldom,
   windows,
   i_BinaryData,
   i_Downloader,
   i_NotifierOperation,
-  u_GeoToStr,
+  u_GeoToStrFunc,
   u_DownloaderHttp,
+  u_BinaryData,
   u_Notifier,
+  u_DownloadRequest,
   u_NotifierOperation,
-  u_DownloadResultFactory,
   u_TileRequestBuilderHelpers;
 
 procedure GenerateAvailPicsDD(
@@ -142,7 +140,7 @@ var
   PlacemarkNode: IXMLNode;
   VDate, VcatalogID: String;
   Vsource, V_uid: String;
-  VposList : String;
+  VposList: String;
   VAddResult: Boolean;
   i, j: integer;
   VParams: TStrings;
@@ -154,7 +152,7 @@ var
     p := System.Pos('_', ASrcId);
     if (p>0) then begin
       // geoeye
-      Result := System.Copy(ASrcId, 1, (p-1));
+      Result := System.Copy(ASrcId, 1, (p - 1));
       // dup + tail
       Result := Result + Result + System.Copy(ASrcId, p, Length(ASrcId));
     end else begin
@@ -168,10 +166,10 @@ var
   VItemFetched: TDateTime;
 begin
   VMemoryStream := TMemoryStream.Create;
-  VMemoryStream.Position:=0;
+  VMemoryStream.Position := 0;
   VMemoryStream.SetSize(AResultOk.Data.Size);
   CopyMemory(VMemoryStream.Memory, AResultOk.Data.Buffer, AResultOk.Data.Size);
-  Result:=0;
+  Result := 0;
 
   if (not Assigned(FTileInfoPtr.AddImageProc)) then
     Exit;
@@ -197,9 +195,9 @@ begin
           SubNode := PlacemarkNode.ChildNodes[j];
           if subNode.nodename='Footprint' then begin
           try
-            VParams:=nil;
-            VParams:=TStringList.Create;
-            VDate := copy(SubNode.GetAttribute('acq_date'),1,10);
+            VParams := nil;
+            VParams := TStringList.Create;
+            VDate := copy(SubNode.GetAttribute('acq_date'), 1, 10);
             VDate[5] := DateSeparator;
             VDate[8] := DateSeparator;
 
@@ -224,10 +222,10 @@ begin
 
             SubNode := SubNode.ChildNodes.FindNode('Geometry');
             VposList := SubNode.text;
-            VposList := ReplaceStr(VposList,',',' ');
-            VposList := ReplaceStr(VposList,'(','');
-            VposList := ReplaceStr(VposList,')','');
-            VposList := ReplaceStr(VposList,'MULTIPOLYGON','');
+            VposList := ReplaceStr(VposList, ',',' ');
+            VposList := ReplaceStr(VposList, '(','');
+            VposList := ReplaceStr(VposList, ')','');
+            VposList := ReplaceStr(VposList, 'MULTIPOLYGON','');
             VParams.Values['Geometry'] := VposList;
             VParams.Values['Source'] := Vsource;
             VParams.Values['Source:uid'] := V_uid;
@@ -237,19 +235,19 @@ begin
                (FLayerKey ='2f864ade-2820-4ddd-9a51-b1d2f4b66e18') or
                (FLayerKey ='1798eda6-9987-407e-8373-eb324d5b31fd') then begin
               // add preview and metadata
-              VParams.Values['IMAGE_FILE_URL'] := 'https://browse.digitalglobe.com/imagefinder/showBrowseImage?catalogId='+VcatalogID+'&imageHeight=1024&imageWidth=1024';
-              VParams.Values['METADATA_URL'] := 'https://browse.digitalglobe.com/imagefinder/showBrowseMetadata?buffer=1.0&catalogId='+VcatalogID+'&imageHeight=natres&imageWidth=natres';
+              VParams.Values['IMAGE_FILE_URL'] := 'https://browse.digitalglobe.com/imagefinder/showBrowseImage?catalogId=' + VcatalogID + '&imageHeight=1024&imageWidth=1024';
+              VParams.Values['METADATA_URL'] := 'https://browse.digitalglobe.com/imagefinder/showBrowseMetadata?buffer=1.0&catalogId=' + VcatalogID + '&imageHeight=natres&imageWidth=natres';
             end else begin
-              VParams.Values['IMAGE_FILE_URL'] := 'http://search.kosmosnimki.ru/QuickLookImage.ashx?id='+VcatalogID;
-              VParams.Values['METADATA_URL'] := 'http://search.kosmosnimki.ru/QuickLookInfo.aspx?id='+VcatalogID;
+              VParams.Values['IMAGE_FILE_URL'] := 'http://search.kosmosnimki.ru/QuickLookImage.ashx?id=' + VcatalogID;
+              VParams.Values['METADATA_URL'] := 'http://search.kosmosnimki.ru/QuickLookInfo.aspx?id=' + VcatalogID;
               // link to full geoeye metadata
               //if (FLayerKey = 'cb547543-5619-464d-a0ee-4ff5ff2e7dab') then
                 //VParams.Values['FULL_METADATA_URL'] := 'http://geofuse.geoeye.com/landing/image-details/Default.aspx?id='+CatalogID_to_GeoFuseGeoEyeID(VcatalogID);
             end;
 
 
-            VposList := ReplaceStr(Vsource,'DigitalGlobe ','');
-            VposList := ReplaceStr(VposList,'GeoEye ','');
+            VposList := ReplaceStr(Vsource, 'DigitalGlobe ', '');
+            VposList := ReplaceStr(VposList, 'GeoEye ', '');
             VposList := 'DD:' + VposList;
 
             VAddResult := FTileInfoPtr.AddImageProc(
@@ -270,7 +268,7 @@ begin
                 VParams.Free;
               except
               end;
-              VParams:=nil;
+              VParams := nil;
             end;
           end;
       end;
@@ -286,13 +284,13 @@ var
   VPostdataStr: string;
   VHttpData: string;
   VDownloader: IDownloader; // TDownloaderHttp;
-  VPostRequest : IDownloadPostRequest; // POST
+  VPostRequest: IDownloadPostRequest; // POST
   VHeader: string;
   VLink: string;
   VStrPostData: AnsiString;
   VResultOk: IDownloadResultOk;
   VResult: IDownloadResult;
-  
+
   VCancelNotifier: INotifierOperation;
   VResultWithRespond: IDownloadResultWithServerRespond;
   V_user_guest_uid: string;
@@ -317,19 +315,15 @@ begin
     '    </ApplicationParameters>'+#$D#$A+
     '  </SOAP-ENV:Body>'+#$D#$A+
     '</SOAP-ENV:Envelope>';
-  VPostData :=
-        TBinaryDataByMemStream.CreateFromMem(
-          Length(VStrPostData),
-          Addr(VStrPostData[1])
-        );
+  VPostData := TBinaryData.CreateByAnsiString(VPostdataStr);
   VPostRequest := TDownloadPostRequest.Create(
                    Vlink,
                    VHeader,
                    VPostData,
                    AInetConfig.GetStatic
                   );
-  VDownloader:=TDownloaderHttp.Create(FResultFactory);
-  VCancelNotifier := TNotifierOperation.Create(TNotifierBase.Create);
+  VDownloader := TDownloaderHttp.Create(FResultFactory);
+  VCancelNotifier := TNotifierOperationFake.Create;
   VResult := VDownloader.DoRequest(
               VPostRequest,
               VCancelNotifier,
@@ -347,16 +341,12 @@ begin
     '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'+#$D#$A+
     '  <SOAP-ENV:Body>'+#$D#$A+
     '    <AuthenticateGuest xmlns="http://www.datadoors.net/services/2.6/">'+#$D#$A+
-    '      <guestUid>'+V_user_guest_uid+'</guestUid>'+#$D#$A+
+    '      <guestUid>'+ V_user_guest_uid + '</guestUid>' + #$D#$A+
     '      <application>DDWC</application>'+#$D#$A+
     '    </AuthenticateGuest>'+#$D#$A+
     '  </SOAP-ENV:Body>'+#$D#$A+
     '</SOAP-ENV:Envelope>';
-  VPostData :=
-        TBinaryDataByMemStream.CreateFromMem(
-          Length(VStrPostData),
-          Addr(VStrPostData[1])
-        );
+  VPostData := TBinaryData.CreateByAnsiString(VPostdataStr);
   VHeader :='User-Agent: Opera/9.80 (Windows NT 6.1; U; ru) Presto/2.10.289 Version/12.01'+#$D#$A+
     'Host: www.datadoors.net'+#$D#$A+
     'Accept: text/html, application/xml;q=0.9, application/xhtml+xml, image/png, image/webp, image/jpeg, image/gif, image/x-xbitmap, */*;q=0.1'+#$D#$A+
@@ -383,13 +373,13 @@ begin
      SetLength(VHttpData, VResultOk.Data.Size);
      Move(VResultOk.Data.Buffer^, VHttpData[1], VResultOk.Data.Size);
     end;
-  V_UserTokenUid := GetBetween(VHttpData ,'<ResponseValue>', '</ResponseValue>');
+  V_UserTokenUid := GetBetween(VHttpData, '<ResponseValue>', '</ResponseValue>');
 
   if length(V_UserTokenUid)=36 then
   VPostDataStr :='<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'+#$D#$A+
     '  <SOAP-ENV:Header>'+#$D#$A+
     '    <tns:DdSoapHeader MyAttribute="" xmlns="http://www.datadoors.net/services/2.6/" xmlns:tns="http://www.datadoors.net/services/2.6/">'+#$D#$A+
-    '      <UserTokenUid>'+V_UserTokenUid+'</UserTokenUid>'+#$D#$A+
+    '      <UserTokenUid>'+V_UserTokenUid + '</UserTokenUid>' + #$D#$A+
     '      <ApplicationName>DDWC</ApplicationName>'+#$D#$A+
     '      <CultureName>en-US</CultureName>'+#$D#$A+
     '      <CurrencyCode>USD</CurrencyCode>'+#$D#$A+
@@ -399,15 +389,15 @@ begin
     '  <SOAP-ENV:Body>'+#$D#$A+
     '    <GetProductFootprintsByCriteria xmlns="http://www.datadoors.net/services/2.6/">'+#$D#$A+
     '      <Criteria>'+#$D#$A+
-    '        <UserUID>'+V_user_guest_uid+'</UserUID>'+#$D#$A+
-    '        <ProductUID>'+LayerKey+'</ProductUID>'+#$D#$A+
+    '        <UserUID>'+V_user_guest_uid + '</UserUID>' + #$D#$A+
+    '        <ProductUID>'+LayerKey + '</ProductUID>' + #$D#$A+
     '        <AOI>MULTIPOLYGON((('+#$D#$A+
-    RoundEx(FTileInfoPtr.TileRect.Left, 8)+' '+RoundEx(FTileInfoPtr.TileRect.Top, 8)+','+
-    RoundEx(FTileInfoPtr.TileRect.Left, 8)+' '+RoundEx(FTileInfoPtr.TileRect.Bottom, 8)+','+
-    RoundEx(FTileInfoPtr.TileRect.Right, 8)+' '+RoundEx(FTileInfoPtr.TileRect.Top, 8)+','+
-    RoundEx(FTileInfoPtr.TileRect.Right, 8)+' '+RoundEx(FTileInfoPtr.TileRect.Bottom, 8)+','+
-    RoundEx(FTileInfoPtr.TileRect.Left, 8)+' '+RoundEx(FTileInfoPtr.TileRect.Top, 8)+
-    ')))</AOI>'+#$D#$A+
+    RoundEx(FTileInfoPtr.TileRect.Left, 8) + ' '+RoundEx(FTileInfoPtr.TileRect.Top, 8) + ','+
+    RoundEx(FTileInfoPtr.TileRect.Left, 8) + ' '+RoundEx(FTileInfoPtr.TileRect.Bottom, 8) + ','+
+    RoundEx(FTileInfoPtr.TileRect.Right, 8) + ' '+RoundEx(FTileInfoPtr.TileRect.Top, 8) + ','+
+    RoundEx(FTileInfoPtr.TileRect.Right, 8) + ' '+RoundEx(FTileInfoPtr.TileRect.Bottom, 8) + ','+
+    RoundEx(FTileInfoPtr.TileRect.Left, 8) + ' '+RoundEx(FTileInfoPtr.TileRect.Top, 8)+
+    ')))</AOI>' + #$D#$A+
     '        <MetadataCriteria CloudCover="5" UnusableData="-1" IncidenceAngle="-1" SunAngle="-1" SnowCover="-1" Quality="-1" Accuracy="-1" RelevantLicensing="false"/>'+#$D#$A+
     '      </Criteria>'+#$D#$A+
     '    </GetProductFootprintsByCriteria>'+#$D#$A+
@@ -415,13 +405,7 @@ begin
     '</SOAP-ENV:Envelope>'
   else VPostDataStr := '';
 
-
-
- VPostData :=
-  TBinaryDataByMemStream.CreateFromMem(
-     Length(VPostDataStr),
-     Addr(VPostDataStr[1])
-     );
+ VPostData := TBinaryData.CreateByAnsiString(VPostdataStr);
 
  VHeader := 'Host: www.datadoors.net'+#$D#$A+
   'Accept: text/html, application/xml;q=0.9, application/xhtml+xml, image/png, image/webp, image/jpeg, image/gif, image/x-xbitmap, */*;q=0.1'+#$D#$A+

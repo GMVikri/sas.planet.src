@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_StaticTreeBuilderBase;
@@ -24,6 +24,7 @@ interface
 
 uses
   Classes,
+  i_InterfaceListStatic,
   i_StaticTreeItem,
   i_StaticTreeBuilder,
   u_BaseInterfacedObject;
@@ -57,7 +58,7 @@ type
       const AName: string;
       AList: TStringList
     );
-    function BuildTreeItemsList(AList: TStringList): IInterfaceList;
+    function BuildTreeItemsList(AList: TStringList): IInterfaceListStatic;
   protected
     function BuildStatic(const ASource: IInterface): IStaticTreeItem;
   end;
@@ -87,10 +88,25 @@ type
     );
   end;
 
+  TStaticTreeByCategoryListBuilder = class(TStaticTreeBuilderBaseBySlash)
+  protected
+    procedure ProcessItems(
+      const ASource: IInterface;
+      AList: TStringList
+    ); override;
+    function GetNameFromItem(
+      const ASource: IInterface;
+      const AItem: IInterface
+    ): string; override;
+  end;
+
 implementation
 
 uses
   SysUtils,
+  i_Category,
+  i_InterfaceListSimple,
+  u_InterfaceListSimple,
   u_StaticTreeItem;
 
 type
@@ -120,10 +136,12 @@ var
   i: Integer;
   VObj: TObject;
 begin
-  for i := 0 to FSubList.Count - 1 do begin
-    VObj := FSubList.Objects[i];
-    FSubList.Objects[i] := nil;
-    VObj.Free;
+  if Assigned(FSubList) then begin
+    for i := 0 to FSubList.Count - 1 do begin
+      VObj := FSubList.Objects[i];
+      FSubList.Objects[i] := nil;
+      VObj.Free;
+    end;
   end;
   FreeAndNil(FSubList);
   FData := nil;
@@ -195,15 +213,17 @@ begin
 end;
 
 function TStaticTreeBuilderBase.BuildTreeItemsList(
-  AList: TStringList): IInterfaceList;
+  AList: TStringList
+): IInterfaceListStatic;
 var
   i: Integer;
   VTempItem: TTempTreeItem;
   VTreeItem: IStaticTreeItem;
+  VTemp: IInterfaceListSimple;
 begin
   Result := nil;
   if AList.Count > 0 then begin
-    Result := TInterfaceList.Create;
+    VTemp := TInterfaceListSimple.Create;
     for i := 0 to AList.Count - 1 do begin
       VTempItem := TTempTreeItem(AList.Objects[i]);
       VTreeItem :=
@@ -213,8 +233,9 @@ begin
           VTempItem.FGroupName,
           BuildTreeItemsList(VTempItem.FSubList)
         );
-      Result.Add(VTreeItem);
+      VTemp.Add(VTreeItem);
     end;
+    Result := VTemp.MakeStaticAndClear;
   end;
 end;
 
@@ -284,6 +305,31 @@ begin
     ACurLevelName := AName;
     ATrailName := '';
     Result := False;
+  end;
+end;
+
+{ TStaticTreeByCategoryListBuilder }
+
+function TStaticTreeByCategoryListBuilder.GetNameFromItem(
+  const ASource: IInterface;
+  const AItem: IInterface
+): string;
+begin
+  Result := (AItem as ICategory).Name;
+end;
+
+procedure TStaticTreeByCategoryListBuilder.ProcessItems(
+  const ASource: IInterface;
+  AList: TStringList
+);
+var
+  VList: IInterfaceListStatic;
+  i: Integer;
+begin
+  inherited;
+  VList := ASource as IInterfaceListStatic;
+  for i := 0 to VList.Count - 1 do begin
+    ProcessItem(ASource, VList.Items[i], AList);
   end;
 end;
 

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MapTypeHotKeyListStatic;
@@ -25,6 +25,7 @@ interface
 uses
   Classes,
   i_MapTypes,
+  i_MapTypeSet,
   i_MapTypeHotKeyListStatic,
   i_IDList,
   u_BaseInterfacedObject;
@@ -62,7 +63,7 @@ begin
   VEnum := AMapsSet.GetIterator;
   while VEnum.Next(1, VGUID, VGetCount) = S_OK do begin
     VMap := AMapsSet.GetMapTypeByGUID(VGUID);
-    VHotKey := VMap.MapType.GUIConfig.HotKey;
+    VHotKey := VMap.GUIConfig.HotKey;
     if VHotKey <> 0 then begin
       FList.Add(VHotKey, VMap);
     end;

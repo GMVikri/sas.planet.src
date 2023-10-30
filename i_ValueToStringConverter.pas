@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_ValueToStringConverter;
@@ -24,8 +24,7 @@ interface
 
 uses
   t_GeoTypes,
-  t_CommonTypes,
-  i_ConfigDataElement;
+  i_Changeable;
 
 type
   IValueToStringConverter = interface
@@ -47,24 +46,8 @@ type
     ): string;
   end;
 
-  IValueToStringConverterConfig = interface(IConfigDataElement)
-    ['{DDC4DF45-A387-43DC-AED7-33935241C718}']
-    function GetDistStrFormat: TDistStrFormat;
-    procedure SetDistStrFormat(AValue: TDistStrFormat);
-    property DistStrFormat: TDistStrFormat read GetDistStrFormat write SetDistStrFormat;
-
-    function GetIsLatitudeFirst: Boolean;
-    procedure SetIsLatitudeFirst(AValue: Boolean);
-    property IsLatitudeFirst: Boolean read GetIsLatitudeFirst write SetIsLatitudeFirst;
-
-    function GetDegrShowFormat: TDegrShowFormat;
-    procedure SetDegrShowFormat(AValue: TDegrShowFormat);
-    property DegrShowFormat: TDegrShowFormat read GetDegrShowFormat write SetDegrShowFormat;
-
-    function GetAreaShowFormat: TAreaStrFormat;
-    procedure SetAreaShowFormat(AValue: TAreaStrFormat);
-    property AreaShowFormat: TAreaStrFormat read GetAreaShowFormat write SetAreaShowFormat;
-
+  IValueToStringConverterChangeable = interface(IChangeable)
+    ['{3204C996-689A-4F5D-92FE-7E942AF1822A}']
     function GetStatic: IValueToStringConverter;
   end;
 

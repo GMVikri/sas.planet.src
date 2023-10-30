@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_ReadWriteSyncCriticalSection;
 
 interface
@@ -5,11 +25,10 @@ interface
 uses
   Windows,
   SysUtils,
-  u_ReadWriteSyncAbstract,
   i_ReadWriteSyncFactory;
 
 type
-  TSynchronizerCS = class(TReadWriteSyncAbstract, IReadWriteSync)
+  TSynchronizerCS = class(TInterfacedObject, IReadWriteSync)
   private
     FLock: TRTLCriticalSection;
   protected
@@ -19,11 +38,11 @@ type
     function BeginWrite: Boolean;
     procedure EndWrite;
   public
-    constructor Create (const AName: AnsiString);
+    constructor Create;
     destructor Destroy; override;
   end;
 
-  TSynchronizerCSSC = class(TReadWriteSyncAbstract, IReadWriteSync)
+  TSynchronizerCSSC = class(TInterfacedObject, IReadWriteSync)
   private
     FLock: TRTLCriticalSection;
   protected
@@ -33,7 +52,7 @@ type
     function BeginWrite: Boolean;
     procedure EndWrite;
   public
-    constructor Create(const AName: AnsiString; const ASpinCount: Cardinal);
+    constructor Create(const ASpinCount: Cardinal);
     destructor Destroy; override;
   end;
 
@@ -55,9 +74,9 @@ implementation
 
 { TSynchronizerCS }
 
-constructor TSynchronizerCS.Create(const AName: AnsiString);
+constructor TSynchronizerCS.Create;
 begin
-  inherited Create(AName);
+  inherited Create;
   InitializeCriticalSection(FLock);
 end;
 
@@ -91,11 +110,10 @@ end;
 { TSynchronizerCSSC }
 
 constructor TSynchronizerCSSC.Create(
-  const AName: AnsiString;
   const ASpinCount: Cardinal
 );
 begin
-  inherited Create(AName);
+  inherited Create;
   InitializeCriticalSectionAndSpinCount(FLock, ASpinCount);
 end;
 
@@ -130,7 +148,7 @@ end;
 
 function TSynchronizerCSFactory.Make(const AName: AnsiString): IReadWriteSync;
 begin
-  Result := TSynchronizerCS.Create(AName);
+  Result := TSynchronizerCS.Create;
 end;
 
 { TSynchronizerCSSCFactory }
@@ -143,7 +161,7 @@ end;
 
 function TSynchronizerCSSCFactory.Make(const AName: AnsiString): IReadWriteSync;
 begin
-  Result := TSynchronizerCSSC.Create(AName, FSpinCount);
+  Result := TSynchronizerCSSC.Create(FSpinCount);
 end;
 
 end.

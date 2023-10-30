@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GlobalAppConfig;
@@ -33,7 +33,6 @@ type
   private
     FIsShowIconInTray: Boolean;
     FIsSendStatistic: Boolean;
-    FIsShowDebugInfo: Boolean;
   protected
     procedure DoReadConfig(const AConfigData: IConfigDataProvider); override;
     procedure DoWriteConfig(const AConfigData: IConfigDataWriteProvider); override;
@@ -43,9 +42,6 @@ type
 
     function GetIsSendStatistic: Boolean;
     procedure SetIsSendStatistic(AValue: Boolean);
-
-    function GetIsShowDebugInfo: Boolean;
-    procedure SetIsShowDebugInfo(AValue: Boolean);
   public
     constructor Create;
   end;
@@ -58,13 +54,7 @@ constructor TGlobalAppConfig.Create;
 begin
   inherited Create;
   FIsShowIconInTray := False;
-
-  {$IFDEF DEBUG}
-  FIsShowDebugInfo := True;
-  {$ELSE}
-  FIsShowDebugInfo := False;
-  {$ENDIF}
-  FIsSendStatistic := True;
+  FIsSendStatistic := False;
 end;
 
 procedure TGlobalAppConfig.DoReadConfig(const AConfigData: IConfigDataProvider);
@@ -72,7 +62,6 @@ begin
   inherited;
   if AConfigData <> nil then begin
     FIsShowIconInTray := AConfigData.ReadBool('ShowIconInTray', FIsShowIconInTray);
-    FIsShowDebugInfo := AConfigData.ReadBool('ShowDebugInfo', FIsShowDebugInfo);
     FIsSendStatistic := AConfigData.ReadBool('SendStatistic', FIsSendStatistic);
     SetChanged;
   end;
@@ -94,16 +83,6 @@ begin
   end;
 end;
 
-function TGlobalAppConfig.GetIsShowDebugInfo: Boolean;
-begin
-  LockRead;
-  try
-    Result := FIsShowDebugInfo;
-  finally
-    UnlockRead;
-  end;
-end;
-
 function TGlobalAppConfig.GetIsShowIconInTray: Boolean;
 begin
   LockRead;
@@ -120,19 +99,6 @@ begin
   try
     if FIsSendStatistic <> AValue then begin
       FIsSendStatistic := AValue;
-      SetChanged;
-    end;
-  finally
-    UnlockWrite;
-  end;
-end;
-
-procedure TGlobalAppConfig.SetIsShowDebugInfo(AValue: Boolean);
-begin
-  LockWrite;
-  try
-    if FIsShowDebugInfo <> AValue then begin
-      FIsShowDebugInfo := AValue;
       SetChanged;
     end;
   finally

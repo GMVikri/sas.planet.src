@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_MarkEditPath;
@@ -33,12 +33,13 @@ uses
   Spin,
   StdCtrls,
   ExtCtrls,
-  GR32,
   u_CommonFormAndFrameParents,
   i_PathConfig,
   i_LanguageManager,
-  i_MarksSimple,
+  i_VectorDataItemSimple,
   i_MarkCategoryDB,
+  i_Appearance,
+  i_AppearanceOfMarkFactory,
   i_MarkFactory,
   fr_MarkDescription,
   fr_MarkCategorySelectOrAdd;
@@ -70,29 +71,35 @@ type
     procedure btnSetAsTemplateClick(Sender: TObject);
   private
     FCategoryDB: IMarkCategoryDB;
+    FAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
     FMarkFactory: IMarkFactory;
     frMarkDescription: TfrMarkDescription;
     frMarkCategory: TfrMarkCategorySelectOrAdd;
+    function MakeAppearance: IAppearance;
   public
     constructor Create(
       const ALanguageManager: ILanguageManager;
       const AMediaPath: IPathConfig;
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const AMarkFactory: IMarkFactory;
       const ACategoryDB: IMarkCategoryDB
     ); reintroduce;
     destructor Destroy; override;
     function EditMark(
-      const AMark: IMarkLine;
+      const AMark: IVectorDataItem;
       const AIsNewMark: Boolean;
       var AVisible: Boolean
-    ): IMarkLine;
+    ): IVectorDataItem;
   end;
 
 implementation
 
 uses
+  GR32,
   i_MarkTemplate,
-  i_MarksFactoryConfig,
+  i_AppearanceOfVectorItem,
+  i_Category,
+  i_MarkFactoryConfig,
   u_ResStrings;
 
 {$R *.dfm}
@@ -100,12 +107,14 @@ uses
 constructor TfrmMarkEditPath.Create(
   const ALanguageManager: ILanguageManager;
   const AMediaPath: IPathConfig;
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const AMarkFactory: IMarkFactory;
   const ACategoryDB: IMarkCategoryDB
 );
 begin
   inherited Create(ALanguageManager);
   FCategoryDB := ACategoryDB;
+  FAppearanceOfMarkFactory := AAppearanceOfMarkFactory;
   FMarkFactory := AMarkFactory;
 
   frMarkDescription := TfrMarkDescription.Create(ALanguageManager, AMediaPath);
@@ -124,18 +133,32 @@ begin
 end;
 
 function TfrmMarkEditPath.EditMark(
-  const AMark: IMarkLine;
+  const AMark: IVectorDataItem;
   const AIsNewMark: Boolean;
   var AVisible: Boolean
-): IMarkLine;
+): IVectorDataItem;
+var
+  VAppearanceLine: IAppearanceLine;
+  VCategory: ICategory;
+  VMarkWithCategory: IVectorDataItemWithCategory;
 begin
-  frMarkCategory.Init(AMark.Category);
+  VCategory := nil;
+  if Supports(AMark.MainInfo, IVectorDataItemWithCategory, VMarkWithCategory) then begin
+    VCategory := VMarkWithCategory.Category;
+  end;
+  frMarkCategory.Init(VCategory);
   try
     edtName.Text:=AMark.Name;
     frMarkDescription.Description := AMark.Desc;
-    SEtransp.Value:=100-round(AlphaComponent(AMark.LineColor)/255*100);
-    seWidth.Value:=AMark.LineWidth;
-    clrbxLineColor.Selected:=WinColor(AMark.LineColor);
+    if Supports(AMark.Appearance, IAppearanceLine, VAppearanceLine) then begin
+      SEtransp.Value := 100-round(AlphaComponent(VAppearanceLine.LineColor)/255*100);
+      seWidth.Value := VAppearanceLine.LineWidth;
+      clrbxLineColor.Selected := WinColor(VAppearanceLine.LineColor);
+    end else begin
+      SEtransp.Value := 0;
+      seWidth.Value := 0;
+      clrbxLineColor.Selected := WinColor(clBlack32);
+    end;
     chkVisible.Checked:= AVisible;
     if AIsNewMark then begin
       Caption := SAS_STR_AddNewPath;
@@ -145,14 +168,12 @@ begin
     Self.PopupParent := Application.MainForm;
     if ShowModal=mrOk then begin
       Result :=
-        FMarkFactory.ModifyLine(
-          AMark,
+        FMarkFactory.CreateMark(
+          AMark.Geometry,
           edtName.Text,
-          frMarkCategory.GetCategory,
           frMarkDescription.Description,
-          AMark.Line,
-          SetAlpha(Color32(clrbxLineColor.Selected),round(((100-SEtransp.Value)/100)*256)),
-          seWidth.Value
+          frMarkCategory.GetCategory,
+          MakeAppearance
         );
       AVisible := chkVisible.Checked;
     end else begin
@@ -170,6 +191,15 @@ begin
   edtName.SetFocus;
 end;
 
+function TfrmMarkEditPath.MakeAppearance: IAppearance;
+begin
+  Result :=
+    FAppearanceOfMarkFactory.CreateLineAppearance(
+      SetAlpha(Color32(clrbxLineColor.Selected),round(((100-SEtransp.Value)/100)*256)),
+      seWidth.Value
+    );
+end;
+
 procedure TfrmMarkEditPath.btnOkClick(Sender: TObject);
 begin
   ModalResult := mrOk;
@@ -184,9 +214,8 @@ begin
     VConfig := FMarkFactory.Config.LineTemplateConfig;
     VTemplate :=
       VConfig.CreateTemplate(
-        frMarkCategory.GetCategory,
-        SetAlpha(Color32(clrbxLineColor.Selected),round(((100-SEtransp.Value)/100)*256)),
-        seWidth.Value
+        MakeAppearance,
+        frMarkCategory.GetCategory
       );
     VConfig.DefaultTemplate := VTemplate;
   end;

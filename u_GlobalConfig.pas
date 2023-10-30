@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_GlobalConfig;
 
 interface
@@ -5,15 +25,15 @@ interface
 uses
   i_PathConfig,
   i_GlobalAppConfig,
-  i_LastSelectionInfo,
   i_LanguageManager,
+  i_AppearanceOfMarkFactory,
   i_GSMGeoCodeConfig,
   i_InetConfig,
   i_BitmapPostProcessingConfig,
-  i_ValueToStringConverter,
+  i_ValueToStringConverterConfig,
   i_ImageResamplerConfig,
   i_MainMemCacheConfig,
-  i_MarksFactoryConfig,
+  i_MarkFactoryConfig,
   i_MarkCategoryFactoryConfig,
   i_GPSConfig,
   i_GlobalViewMainConfig,
@@ -24,7 +44,7 @@ uses
   i_ZmpConfig,
   i_WindowPositionConfig,
   i_GlobalConfig,
-  i_LastSearchResultConfig,
+  i_InternalDebugConfig,
   i_MapSvcScanConfig,
   u_ConfigDataElementComplexBase;
 
@@ -39,13 +59,14 @@ type
     FMarksIconsPath: IPathConfig;
     FMediaDataPath: IPathConfig;
     FTerrainDataPath: IPathConfig;
+    FUpdatesPath: IPathConfig;
     FLastSelectionFileName: IPathConfig;
     FGpsRecorderFileName: IPathConfig;
     FGpsTrackRecorderFileName: IPathConfig;
 
-    FGlobalAppConfig: IGlobalAppConfig;
+    FInternalDebugConfig: IInternalDebugConfig;
 
-    FLastSelectionInfo: ILastSelectionInfo;
+    FGlobalAppConfig: IGlobalAppConfig;
     FLanguageManager: ILanguageManager;
     FGsmConfig: IGSMGeoCodeConfig;
     FInetConfig: IInetConfig;
@@ -61,7 +82,7 @@ type
     FTileMatrixDraftResamplerConfig: IImageResamplerConfig;
     FMainMemCacheConfig: IMainMemCacheConfig;
     FGPSConfig: IGpsConfig;
-    FMarksFactoryConfig: IMarksFactoryConfig;
+    FMarksFactoryConfig: IMarkFactoryConfig;
     FMarksCategoryFactoryConfig: IMarkCategoryFactoryConfig;
     FViewConfig: IGlobalViewMainConfig;
     FDownloadConfig: IGlobalDownloadConfig;
@@ -69,7 +90,6 @@ type
     FStartUpLogoConfig: IStartUpLogoConfig;
     FTerrainConfig: ITerrainConfig;
     FZmpConfig: IZmpConfig;
-    FLastSearchResultConfig: ILastSearchResultConfig;
     FMapSvcScanConfig: IMapSvcScanConfig;
   private
     function GetBaseCahcePath: IPathConfig;
@@ -79,11 +99,12 @@ type
     function GetMarksIconsPath: IPathConfig;
     function GetMediaDataPath: IPathConfig;
     function GetTerrainDataPath: IPathConfig;
+    function GetUpdatesPath: IPathConfig;
     function GetLastSelectionFileName: IPathConfig;
     function GetGpsRecorderFileName: IPathConfig;
     function GetGpsTrackRecorderFileName: IPathConfig;
+    function GetInternalDebugConfig: IInternalDebugConfig;
     function GetGlobalAppConfig: IGlobalAppConfig;
-    function GetLastSelectionInfo: ILastSelectionInfo;
     function GetLanguageManager: ILanguageManager;
     function GetGsmConfig: IGSMGeoCodeConfig;
     function GetInetConfig: IInetConfig;
@@ -99,7 +120,7 @@ type
     function GetTileMatrixDraftResamplerConfig: IImageResamplerConfig;
     function GetMainMemCacheConfig: IMainMemCacheConfig;
     function GetGPSConfig: IGpsConfig;
-    function GetMarksFactoryConfig: IMarksFactoryConfig;
+    function GetMarksFactoryConfig: IMarkFactoryConfig;
     function GetMarksCategoryFactoryConfig: IMarkCategoryFactoryConfig;
     function GetViewConfig: IGlobalViewMainConfig;
     function GetDownloadConfig: IGlobalDownloadConfig;
@@ -107,10 +128,11 @@ type
     function GetStartUpLogoConfig: IStartUpLogoConfig;
     function GetTerrainConfig: ITerrainConfig;
     function GetZmpConfig: IZmpConfig;
-    function GetLastSearchResultConfig: ILastSearchResultConfig;
     function GetMapSvcScanConfig: IMapSvcScanConfig;
   public
     constructor Create(
+      const AInternalDebugConfig: IInternalDebugConfig;
+      const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
       const ABaseCacheDataPath: IPathConfig;
       const ABaseConfigPath: IPathConfig;
       const ABaseDataPath: IPathConfig;
@@ -123,17 +145,14 @@ implementation
 uses
   SysUtils,
   Classes,
-  i_ImageResamplerFactory,
+  c_ImageResampler,
   u_ConfigSaveLoadStrategyBasicProviderSubItem,
   u_ConfigSaveLoadStrategyBasicUseProvider,
-  u_GlobalAppConfig,
-  u_LastSelectionInfo,
   u_LanguageManager,
   u_GSMGeoCodeConfig,
   u_InetConfig,
   u_WindowPositionConfig,
   u_ThreadConfig,
-  u_ImageResamplerFactoryListStaticSimple,
   u_ImageResamplerConfig,
   u_ValueToStringConverterConfig,
   u_MainMemCacheConfig,
@@ -142,24 +161,24 @@ uses
   u_GlobalDownloadConfig,
   u_TerrainConfig,
   u_ZmpConfig,
-  u_LastSearchResultConfig,
   u_MapSvcScanConfig,
   u_StartUpLogoConfig,
   u_BitmapPostProcessingConfig,
-  u_MarksFactoryConfig,
+  u_MarkFactoryConfig,
   u_MarkCategoryFactoryConfig,
+  u_GlobalAppConfig,
   u_PathConfig;
 
 { TGlobalConfig }
 
 constructor TGlobalConfig.Create(
+  const AInternalDebugConfig: IInternalDebugConfig;
+  const AAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
   const ABaseCacheDataPath: IPathConfig;
   const ABaseConfigPath: IPathConfig;
   const ABaseDataPath: IPathConfig;
   const ABaseApplicationPath: IPathConfig
 );
-var
-  VResamplerFactoryList: IImageResamplerFactoryList;
 begin
   inherited Create;
   FBaseCahcePath := TPathConfig.Create('PrimaryPath', '.', ABaseCacheDataPath);
@@ -186,6 +205,9 @@ begin
   FTerrainDataPath := TPathConfig.Create('PrimaryPath', '.\TerrainData', ABaseDataPath);
   Add(FTerrainDataPath, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PATHtoTerrainData'), False, False, False, False);
 
+  FUpdatesPath := TPathConfig.Create('PrimaryPath', '.\Updates', ABaseDataPath);
+  Add(FUpdatesPath, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PATHtoUpdates'), False, False, False, False);
+
   FLastSelectionFileName := TPathConfig.Create('FileName', '.\LastSelection.hlg', ABaseDataPath);
   Add(FLastSelectionFileName, TConfigSaveLoadStrategyBasicProviderSubItem.Create('LastSelection'), False, False, False, False);
 
@@ -195,10 +217,10 @@ begin
   FGpsTrackRecorderFileName := TPathConfig.Create('TrackFileName', '.\LastPoints.dat', ABaseDataPath);
   Add(FGpsTrackRecorderFileName, TConfigSaveLoadStrategyBasicProviderSubItem.Create('GpsData'), False, False, False, False);
 
+  FInternalDebugConfig := AInternalDebugConfig;
+
   FGlobalAppConfig := TGlobalAppConfig.Create;
   Add(FGlobalAppConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('VIEW'), False, False, False, False);
-
-  FLastSelectionInfo := TLastSelectionInfo.Create;
 
   FLanguageManager := TLanguageManager.Create(IncludeTrailingPathDelimiter(ABaseApplicationPath.FullPath) + 'lang');
   Add(FLanguageManager, TConfigSaveLoadStrategyBasicProviderSubItem.Create('View'), False, False, False, False);
@@ -215,27 +237,25 @@ begin
   FMainThreadConfig := TThreadConfig.Create(tpHigher);
   Add(FMainThreadConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('View'), False, False, False, False);
 
-  VResamplerFactoryList := TImageResamplerFactoryListStaticSimple.Create;
-
-  FTileLoadResamplerConfig := TImageResamplerConfig.Create(VResamplerFactoryList);
+  FTileLoadResamplerConfig := TImageResamplerConfig.Create(CResamplerLinearGUID);
   Add(FTileLoadResamplerConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Maps_Load'), False, False, False, False);
 
-  FTileGetPrevResamplerConfig := TImageResamplerConfig.Create(VResamplerFactoryList);
+  FTileGetPrevResamplerConfig := TImageResamplerConfig.Create(CResamplerLinearGUID);
   Add(FTileGetPrevResamplerConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Maps_GetPrev'), False, False, False, False);
 
-  FTileReprojectResamplerConfig := TImageResamplerConfig.Create(VResamplerFactoryList);
+  FTileReprojectResamplerConfig := TImageResamplerConfig.Create(CResamplerLinearGUID);
   Add(FTileReprojectResamplerConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Maps_Reproject'), False, False, False, False);
 
-  FTileDownloadResamplerConfig := TImageResamplerConfig.Create(VResamplerFactoryList);
+  FTileDownloadResamplerConfig := TImageResamplerConfig.Create(CResamplerLinearGUID);
   Add(FTileDownloadResamplerConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Maps_Download'), False, False, False, False);
 
-  FValueToStringConverterConfig := TValueToStringConverterConfig.Create(FLanguageManager);
+  FValueToStringConverterConfig := TValueToStringConverterConfig.Create;
   Add(FValueToStringConverterConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('ValueFormats'), False, False, False, False);
 
-  FImageResamplerConfig := TImageResamplerConfig.Create(VResamplerFactoryList);
+  FImageResamplerConfig := TImageResamplerConfig.Create(CResamplerLinearGUID);
   Add(FImageResamplerConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('View'), False, False, False, False);
 
-  FTileMatrixDraftResamplerConfig := TImageResamplerConfig.Create(VResamplerFactoryList);
+  FTileMatrixDraftResamplerConfig := TImageResamplerConfig.Create(CResamplerNearestGUID);
   Add(FTileMatrixDraftResamplerConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('View_TilesDrafts'), False, False, False, False);
 
   FMainMemCacheConfig := TMainMemCacheConfig.Create;
@@ -259,8 +279,6 @@ begin
   FZmpConfig := TZmpConfig.Create;
   Add(FZmpConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('ZmpDefaultParams'), False, False, False, False);
 
-  FLastSearchResultConfig := TLastSearchResultConfig.Create;
-
   FStartUpLogoConfig := TStartUpLogoConfig.Create;
   Add(FStartUpLogoConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('StartUpLogo'), False, False, False, False);
 
@@ -270,7 +288,7 @@ begin
   FMapSvcScanConfig := TMapSvcScanConfig.Create(FMapSvcScanPath);
   Add(FMapSvcScanConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('MapSvcScan'), False, False, False, False);
 
-  FMarksFactoryConfig := TMarksFactoryConfig.Create(FLanguageManager);
+  FMarksFactoryConfig := TMarkFactoryConfig.Create(AAppearanceOfMarkFactory, FLanguageManager);
   Add(FMarksFactoryConfig, TConfigSaveLoadStrategyBasicUseProvider.Create, False, False, False, False);
 
   FMarksCategoryFactoryConfig := TMarkCategoryFactoryConfig.Create(FLanguageManager);
@@ -337,24 +355,19 @@ begin
   Result := FInternalBrowserConfig;
 end;
 
+function TGlobalConfig.GetInternalDebugConfig: IInternalDebugConfig;
+begin
+  Result := FInternalDebugConfig;
+end;
+
 function TGlobalConfig.GetLanguageManager: ILanguageManager;
 begin
   Result := FLanguageManager;
 end;
 
-function TGlobalConfig.GetLastSearchResultConfig: ILastSearchResultConfig;
-begin
-  Result := FLastSearchResultConfig;
-end;
-
 function TGlobalConfig.GetLastSelectionFileName: IPathConfig;
 begin
   Result := FLastSelectionFileName;
-end;
-
-function TGlobalConfig.GetLastSelectionInfo: ILastSelectionInfo;
-begin
-  Result := FLastSelectionInfo;
 end;
 
 function TGlobalConfig.GetMainMemCacheConfig: IMainMemCacheConfig;
@@ -387,7 +400,7 @@ begin
   Result := FMarksDbPath;
 end;
 
-function TGlobalConfig.GetMarksFactoryConfig: IMarksFactoryConfig;
+function TGlobalConfig.GetMarksFactoryConfig: IMarkFactoryConfig;
 begin
   Result := FMarksFactoryConfig;
 end;
@@ -415,6 +428,11 @@ end;
 function TGlobalConfig.GetTerrainDataPath: IPathConfig;
 begin
   Result := FTerrainDataPath;
+end;
+
+function TGlobalConfig.GetUpdatesPath: IPathConfig;
+begin
+  Result := FUpdatesPath;
 end;
 
 function TGlobalConfig.GetTileDownloadResamplerConfig: IImageResamplerConfig;

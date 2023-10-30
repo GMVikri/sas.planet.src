@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_SearchResults;
@@ -28,9 +28,8 @@ uses
   Controls,
   Menus,
   i_MapViewGoto,
-  i_LocalCoordConverterChangeable,
   i_ValueToStringConverter,
-  i_LastSearchResultConfig,
+  i_LastSearchResult,
   i_GeoCoder,
   i_InternalBrowser,
   i_SearchResultPresenter,
@@ -41,19 +40,17 @@ type
   TSearchResultPresenterOnPanel = class(TBaseInterfacedObject, ISearchResultPresenter)
   private
     FMapGoto: IMapViewGoto;
-    FViewPortState: ILocalCoordConverterChangeable;
     FIntrnalBrowser: IInternalBrowser;
     FDrawParent: TWinControl;
     FPopUp: TPopupMenu;
-    FValueConverterConfig: IValueToStringConverterConfig;
-    FLastSearchResults: ILastSearchResultConfig;
+    FValueConverter: IValueToStringConverterChangeable;
+    FLastSearchResults: ILastSearchResult;
     FOnShowResults: TNotifyEvent;
     FSearchItems: array of TfrSearchResultsItem;
   private
     procedure ClearSearchResults;
     procedure ShowSearchResults(
-      const ASearchResult: IGeoCodeResult;
-      AZoom: Byte
+      const ASearchResult: IGeoCodeResult
     );
   public
     constructor Create(
@@ -62,9 +59,8 @@ type
       ADrawParent: TWinControl;
       APopUp: TPopupMenu;
       AOnShowResults: TNotifyEvent;
-      const AValueConverterConfig: IValueToStringConverterConfig;
-      const ALastSearchResults: ILastSearchResultConfig;
-      const AViewPortState: ILocalCoordConverterChangeable
+      const AValueConverter: IValueToStringConverterChangeable;
+      const ALastSearchResults: ILastSearchResult
     );
     destructor Destroy; override;
   end;
@@ -73,6 +69,8 @@ implementation
 
 uses
   ActiveX,
+  i_VectorDataItemSimple,
+  i_GeometryLonLat,
   u_ResStrings;
 
 { TSearchResultPresenterOnPanel }
@@ -83,17 +81,15 @@ constructor TSearchResultPresenterOnPanel.Create(
   ADrawParent: TWinControl;
   APopUp: TPopupMenu;
   AOnShowResults: TNotifyEvent;
-  const AValueConverterConfig: IValueToStringConverterConfig;
-  const ALastSearchResults: ILastSearchResultConfig;
-  const AViewPortState: ILocalCoordConverterChangeable
+  const AValueConverter: IValueToStringConverterChangeable;
+  const ALastSearchResults: ILastSearchResult
 );
 begin
   inherited Create;
   FPopUp := APopUp;
   FIntrnalBrowser := AIntrnalBrowser;
   FMapGoto := AMapGoto;
-  FValueConverterConfig := AValueConverterConfig;
-  FViewPortState := AViewPortState;
+  FValueConverter := AValueConverter;
   FDrawParent := ADrawParent;
   FLastSearchResults := ALastSearchResults;
   FOnShowResults := AOnShowResults;
@@ -117,50 +113,51 @@ begin
 end;
 
 procedure TSearchResultPresenterOnPanel.ShowSearchResults(
-  const ASearchResult: IGeoCodeResult;
-  AZoom: Byte
+  const ASearchResult: IGeoCodeResult
 );
 var
-  VPlacemark: IGeoCodePlacemark;
+  VPlacemark: IVectorDataItem;
   VEnum: IEnumUnknown;
   i: Cardinal;
   LengthFSearchItems: integer;
-  VItemForGoTo: IGeoCodePlacemark;
+  VItemForGoTo: IVectorDataItem;
   VCnt: Integer;
 begin
   ClearSearchResults;
   VItemForGoTo := nil;
-  VEnum := ASearchResult.GetPlacemarks;
 
   FLastSearchResults.ClearGeoCodeResult;
-  if ASearchResult.GetPlacemarksCount > 1 then begin
-    FOnShowResults(Self);
+  if ASearchResult.Count > 0 then begin
     FLastSearchResults.GeoCodeResult := ASearchResult;
-  end;
+    if ASearchResult.Count > 1 then begin
+      FOnShowResults(Self);
+    end;
 
-  VCnt := 0;
-  while VEnum.Next(1, VPlacemark, @i) = S_OK do begin
-    if VItemForGoTo = nil then begin
-      VItemForGoTo := VPlacemark;
-    end;
-    LengthFSearchItems := length(FSearchItems);
-    SetLength(FSearchItems, LengthFSearchItems + 1);
-    FSearchItems[LengthFSearchItems] :=
-      TfrSearchResultsItem.Create(
-        nil,
-        FDrawParent,
-        FPopUp,
-        VPlacemark,
-        FViewPortState,
-        FIntrnalBrowser,
-        FMapGoto
-      );
-    if LengthFSearchItems > 0 then begin
-      FSearchItems[LengthFSearchItems].Top := FSearchItems[LengthFSearchItems - 1].Top + 1;
-    end;
-    Inc(VCnt);
-    if VCnt > 100 then begin
-      Break;
+    VCnt := 0;
+    VEnum := ASearchResult.GetEnum;
+    while VEnum.Next(1, VPlacemark, @i) = S_OK do begin
+      if VItemForGoTo = nil then begin
+        VItemForGoTo := VPlacemark;
+      end;
+      LengthFSearchItems := length(FSearchItems);
+      SetLength(FSearchItems, LengthFSearchItems + 1);
+      FSearchItems[LengthFSearchItems] :=
+        TfrSearchResultsItem.Create(
+          nil,
+          FDrawParent,
+          FPopUp,
+          VPlacemark,
+          FIntrnalBrowser,
+          FMapGoto,
+          FValueConverter
+        );
+      if LengthFSearchItems > 0 then begin
+        FSearchItems[LengthFSearchItems].Top := FSearchItems[LengthFSearchItems - 1].Top + 1;
+      end;
+      Inc(VCnt);
+      if VCnt > 100 then begin
+        Break;
+      end;
     end;
   end;
 
@@ -168,7 +165,8 @@ begin
     if VItemForGoTo = nil then begin
       ShowMessage(SAS_STR_notfound);
     end else begin
-      FMapGoto.GotoPos(VItemForGoTo.GetPoint, AZoom, True);
+      FMapGoto.FitRectToScreen(VItemForGoTo.Geometry.Bounds.Rect);
+      FMapGoto.ShowMarker(VItemForGoTo.Geometry.GetGoToPoint);
     end;
   end else begin
     case ASearchResult.GetResultCode of

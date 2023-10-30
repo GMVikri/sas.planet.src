@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageTypeListSimple;
@@ -23,12 +23,10 @@ unit u_TileStorageTypeListSimple;
 interface
 
 uses
-  i_PathConfig,
   i_NotifierTime,
   i_ContentTypeManager,
   i_GlobalBerkeleyDBHelper,
-  i_SimpleTileStorageConfig,
-  i_MapVersionConfig,
+  i_GlobalCacheConfig,
   i_MapVersionFactoryList,
   i_TileStorageTypeConfig,
   i_TileStorageType,
@@ -40,11 +38,10 @@ type
   public
     constructor Create(
       const AMapVersionFactoryList: IMapVersionFactoryList;
-      const AConfig: ISimpleTileStorageConfigStatic;
       const AContentTypeManager: IContentTypeManager;
+      const AGlobalCacheConfig: IGlobalCacheConfig;
       const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
-      const AGCNotifier: INotifierTime;
-      const ABasePath: IPathConfig
+      const AGCNotifier: INotifierTime
     );
   end;
 
@@ -52,6 +49,8 @@ implementation
 
 uses
   c_CacheTypeCodes, // for default path
+  i_InterfaceListSimple,
+  u_InterfaceListSimple,
   u_TileFileNameSAS,
   u_TileFileNameGMV,
   u_TileFileNameES,
@@ -59,6 +58,7 @@ uses
   u_TileFileNameGM2,
   u_TileStorageTypeConfig,
   u_TileStorageTypeGE,
+  u_TileStorageTypeGoogleEarth,
   u_TileStorageTypeBerkeleyDB,
   u_TileStorageTypeDBMS,
   u_TileStorageTypeInRAM,
@@ -67,6 +67,7 @@ uses
 
 const
   CTileStorageTypeGE: TGUID = '{71C83BAA-EEA0-45E1-833E-8CCC3A8D1A1A}';
+  CTileStorageTypeGETerrain: TGUID = '{C38B1837-A0E1-4139-89A3-3AB37C7ED702}';
   CTileStorageTypeGC: TGUID = '{F3163512-A190-426B-9D18-881AAD9DE61C}';
   CTileStorageTypeBerkeleyDB: TGUID = '{3DBF81CD-9356-40EB-9778-DE4D98E5BE61}';
   CTileStorageTypeBerkeleyDBVersioned: TGUID = '{CA3868AE-6762-4D17-B72F-6892E61E119B}';
@@ -82,18 +83,20 @@ const
 
 constructor TTileStorageTypeListSimple.Create(
   const AMapVersionFactoryList: IMapVersionFactoryList;
-  const AConfig: ISimpleTileStorageConfigStatic;
   const AContentTypeManager: IContentTypeManager;
+  const AGlobalCacheConfig: IGlobalCacheConfig;
   const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
-  const AGCNotifier: INotifierTime;
-  const ABasePath: IPathConfig
+  const AGCNotifier: INotifierTime
 );
 var
   VItem: ITileStorageTypeListItem;
   VStorageTypeConfig: ITileStorageTypeConfig;
   VStorageType: ITileStorageType;
+  VList: IInterfaceListSimple;
 begin
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_SAS);
+  VList := TInterfaceListSimple.Create;
+
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.NewCPath);
   VStorageType :=
     TTileStorageTypeFileSystemSimple.Create(
       TTileFileNameSAS.Create,
@@ -104,161 +107,222 @@ begin
   VItem :=
     TTileStorageTypeListItem.Create(
       CTileStorageTypeFileSystemSAS,
+      c_File_Cache_Id_SAS,
       'Files SAS.Planet',
       VStorageType,
+      True,
       True
     );
-  inherited Create(VItem);
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_GMV);
-  VStorageType := TTileStorageTypeFileSystemSimple.Create(
-    TTileFileNameGMV.Create,
-    TTileFileNameGMV.Create,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeFileSystemGMV,
-    'Files GMV',
-    VStorageType,
-    True
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.OldCPath);
+  VStorageType :=
+    TTileStorageTypeFileSystemSimple.Create(
+      TTileFileNameGMV.Create,
+      TTileFileNameGMV.Create,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeFileSystemGMV,
+      c_File_Cache_Id_GMV,
+      'Files GMV',
+      VStorageType,
+      True,
+      True
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_ES);
-  VStorageType := TTileStorageTypeFileSystemSimple.Create(
-    TTileFileNameES.Create,
-    TTileFileNameES.Create,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeFileSystemES,
-    'Files ES',
-    VStorageType,
-    True
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.ESCPath);
+  VStorageType :=
+    TTileStorageTypeFileSystemSimple.Create(
+      TTileFileNameES.Create,
+      TTileFileNameES.Create,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeFileSystemES,
+      c_File_Cache_Id_ES,
+      'Files ES',
+      VStorageType,
+      True,
+      True
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_GM);
-  VStorageType := TTileStorageTypeFileSystemSimple.Create(
-    TTileFileNameGM1.Create,
-    TTileFileNameGM1.Create,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeFileSystemGM1,
-    'Files GM',
-    VStorageType,
-    True
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.GMTilesPath);
+  VStorageType :=
+    TTileStorageTypeFileSystemSimple.Create(
+      TTileFileNameGM1.Create,
+      TTileFileNameGM1.Create,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeFileSystemGM1,
+      c_File_Cache_Id_GM,
+      'Files GM',
+      VStorageType,
+      True,
+      True
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_GM);
-  VStorageType := TTileStorageTypeFileSystemSimple.Create(
-    TTileFileNameGM2.Create,
-    TTileFileNameGM2.Create,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeFileSystemGM2,
-    'Files GM aux',
-    VStorageType,
-    False
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.GMTilesPath);
+  VStorageType :=
+    TTileStorageTypeFileSystemSimple.Create(
+      TTileFileNameGM2.Create,
+      TTileFileNameGM2.Create,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeFileSystemGM2,
+      c_File_Cache_Id_GM_Aux,
+      'Files GM aux',
+      VStorageType,
+      True,
+      False
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_GE);
-  VStorageType := TTileStorageTypeGE.Create(
-    AContentTypeManager,
-    AMapVersionFactoryList.GetGEVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeGE,
-    'GE cache',
-    VStorageType,
-    False
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.GCCachePath);
+  VStorageType :=
+    TTileStorageTypeGC.Create(
+      AContentTypeManager,
+      AMapVersionFactoryList.GetGEVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeGC,
+      c_File_Cache_Id_GC,
+      'GC cache',
+      VStorageType,
+      False,
+      False
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_GC);
-  VStorageType := TTileStorageTypeGC.Create(
-    AContentTypeManager,
-    AMapVersionFactoryList.GetGEVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeGC,
-    'GC cache',
-    VStorageType,
-    False
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.BDBCachePath);
+  VStorageType :=
+    TTileStorageTypeBerkeleyDB.Create(
+      AGlobalBerkeleyDBHelper,
+      AGCNotifier,
+      False, // IsVersioned
+      AContentTypeManager,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeBerkeleyDB,
+      c_File_Cache_Id_BDB,
+      'Berkeley DB',
+      VStorageType,
+      True,
+      True
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_BDB);
-  VStorageType := TTileStorageTypeBerkeleyDB.Create(
-    AGlobalBerkeleyDBHelper,
-    AGCNotifier,
-    False, // IsVersioned
-    AContentTypeManager,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeBerkeleyDB,
-    'Berkeley DB',
-    VStorageType,
-    True
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.BDBVerCachePath);
+  VStorageType :=
+    TTileStorageTypeBerkeleyDB.Create(
+      AGlobalBerkeleyDBHelper,
+      AGCNotifier,
+      True, // IsVersioned
+      AContentTypeManager,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeBerkeleyDB,
+      c_File_Cache_Id_BDB_Versioned,
+      'Berkeley DB (Versioned)',
+      VStorageType,
+      True,
+      True
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_BDB);
-  VStorageType := TTileStorageTypeBerkeleyDB.Create(
-    AGlobalBerkeleyDBHelper,
-    AGCNotifier,
-    True, // IsVersioned
-    AContentTypeManager,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeBerkeleyDB,
-    'Berkeley DB (Versioned)',
-    VStorageType,
-    True
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.GECachePath);
+  VStorageType :=
+    TTileStorageTypeGoogleEarth.Create(
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      False,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeGE,
+      c_File_Cache_Id_GE,
+      'Google Earth Cache (Read Only)',
+      VStorageType,
+      False,
+      False
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_DBMS);
-  VStorageType := TTileStorageTypeDBMS.Create(
-    AGCNotifier,
-    AContentTypeManager,
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeDBMS,
-    'DBMS',
-    VStorageType,
-    False
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.GECachePath);
+  VStorageType :=
+    TTileStorageTypeGoogleEarth.Create(
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      True,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeGETerrain,
+      c_File_Cache_Id_GEt,
+      'Google Earth Cache Terrain (Read Only)',
+      VStorageType,
+      False,
+      False
+    );
+  VList.Add(VItem);
 
-  VStorageTypeConfig := TTileStorageTypeConfig.Create(ABasePath, c_File_Cache_Default_RAM);
-  VStorageType := TTileStorageTypeInRAM.Create(
-    AMapVersionFactoryList.GetSimpleVersionFactory,
-    VStorageTypeConfig
-  );
-  VItem := TTileStorageTypeListItem.Create(
-    CTileStorageTypeInRAM,
-    'RAM',
-    VStorageType,
-    True
-  );
-  Add(VItem);
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(AGlobalCacheConfig.DBMSCachePath);
+  VStorageType :=
+    TTileStorageTypeDBMS.Create(
+      AGCNotifier,
+      AContentTypeManager,
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeDBMS,
+      c_File_Cache_Id_DBMS,
+      'DBMS',
+      VStorageType,
+      True,
+      False
+    );
+  VList.Add(VItem);
+
+  VStorageTypeConfig := TTileStorageTypeConfig.Create(nil);
+  VStorageType :=
+    TTileStorageTypeInRAM.Create(
+      AMapVersionFactoryList.GetSimpleVersionFactory,
+      VStorageTypeConfig
+    );
+  VItem :=
+    TTileStorageTypeListItem.Create(
+      CTileStorageTypeInRAM,
+      c_File_Cache_Id_RAM,
+      'RAM',
+      VStorageType,
+      True,
+      True
+    );
+  VList.Add(VItem);
+  inherited Create(VList.MakeStaticAndClear);
 end;
 
 end.

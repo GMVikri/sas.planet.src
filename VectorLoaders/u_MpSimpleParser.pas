@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MpSimpleParser;
 
 interface
@@ -5,16 +25,19 @@ interface
 uses
   i_BinaryData,
   i_VectorDataLoader,
-  i_VectorItemsFactory,
+  i_GeometryLonLatFactory,
   i_VectorItemSubset,
   i_VectorDataFactory,
+  i_VectorItemSubsetBuilder,
   i_DoublePointsAggregator,
   u_BaseInterfacedObject;
 
 type
   TMpSimpleParser = class(TBaseInterfacedObject, IVectorDataLoader)
   private
-    FFactory: IVectorItemsFactory;
+    FVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+    FVectorDataFactory: IVectorDataFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
     procedure ParseCoordinates(
       const AData: string;
       const APointsAggregator: IDoublePointsAggregator
@@ -23,11 +46,13 @@ type
     function Load(
       const AData: IBinaryData;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): IVectorItemSubset;
   public
     constructor Create(
-      const AFactory: IVectorItemsFactory
+      const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+      const AVectorDataFactory: IVectorDataFactory;
+      const AVectorGeometryLonLatFactory: IGeometryLonLatFactory
     );
   end;
 
@@ -37,17 +62,12 @@ uses
   SysUtils,
   StrUtils,
   Classes,
-  IniFiles,
   t_GeoTypes,
-  i_ConfigDataProvider,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   i_VectorDataItemSimple,
-  u_ConfigProviderHelpers,
   u_StreamReadOnlyByBinaryData,
-  u_ConfigDataProviderByIniFile,
-  u_VectorDataItemSubset,
   u_DoublePointsAggregator,
-  u_GeoFun;
+  u_GeoFunc;
 
 const
   CPoligonHeader = '[POLYGON]';
@@ -55,10 +75,16 @@ const
 
 { TMpSimpleParser }
 
-constructor TMpSimpleParser.Create(const AFactory: IVectorItemsFactory);
+constructor TMpSimpleParser.Create(
+  const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+  const AVectorDataFactory: IVectorDataFactory;
+  const AVectorGeometryLonLatFactory: IGeometryLonLatFactory
+);
 begin
   inherited Create;
-  FFactory := AFactory;
+  FVectorItemSubsetBuilderFactory := AVectorItemSubsetBuilderFactory;
+  FVectorDataFactory := AVectorDataFactory;
+  FVectorGeometryLonLatFactory := AVectorGeometryLonLatFactory;
 end;
 
 procedure TMpSimpleParser.ParseCoordinates(
@@ -108,14 +134,14 @@ end;
 function TMpSimpleParser.Load(
   const AData: IBinaryData;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): IVectorItemSubset;
 var
   VFileStrings: TStringList;
   VDataStream: TStream;
-  VPolygon: ILonLatPolygon;
-  VItem: IVectorDataItemSimple;
-  VList: IInterfaceList;
+  VPolygon: IGeometryLonLatPolygon;
+  VItem: IVectorDataItem;
+  VList: IVectorItemSubsetBuilder;
   VString: string;
   VPoligonLine: Integer;
   i: integer;
@@ -164,19 +190,18 @@ begin
     end;
   end;
   if VPointsAggregator.Count > 2 then begin
-    VPolygon := FFactory.CreateLonLatPolygon(VPointsAggregator.Points, VPointsAggregator.Count);
+    VPolygon := FVectorGeometryLonLatFactory.CreateLonLatMultiPolygon(VPointsAggregator.Points, VPointsAggregator.Count);
   end;
   if VPolygon <> nil then begin
     VItem :=
-      AFactory.BuildPoly(
-        AIdData,
-        '',
-        '',
+      FVectorDataFactory.BuildItem(
+        AVectorDataItemMainInfoFactory.BuildMainInfo(AIdData, '', ''),
+        nil,
         VPolygon
       );
-    VList := TInterfaceList.Create;
+    VList := FVectorItemSubsetBuilderFactory.Build;
     VList.Add(VItem);
-    Result := TVectorItemSubset.Create(VList);
+    Result := VList.MakeStaticAndClear;
   end;
 end;
 

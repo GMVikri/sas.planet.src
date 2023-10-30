@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_GPSModuleByCOMPortConfig;
@@ -46,18 +46,20 @@ type
     procedure SetDelay(const AValue: DWORD);
     property Delay: DWORD read GetDelay write SetDelay;
 
-    function GetNMEALog: Boolean;
-    procedure SetNMEALog(const AValue: Boolean);
-    property NMEALog: Boolean read GetNMEALog write SetNMEALog;
+    // NMEALog
+    function GetLowLevelLog: Boolean;
+    procedure SetLowLevelLog(const AValue: Boolean);
+    property LowLevelLog: Boolean read GetLowLevelLog write SetLowLevelLog;
 
     function GetLogPath: WideString;
     property LogPath: WideString read GetLogPath;
 
     function GetStatic: IGPSModuleByCOMPortSettings;
 
-    function GetUSBGarmin: Boolean;
-    procedure SetUSBGarmin(const AValue: Boolean);
-    property USBGarmin: Boolean read GetUSBGarmin write SetUSBGarmin;
+    // USBGarmin
+    function GetGPSOrigin: TGPSOrigin;
+    procedure SetGPSOrigin(const AValue: TGPSOrigin);
+    property GPSOrigin: TGPSOrigin read GetGPSOrigin write SetGPSOrigin;
 
     function GetAutodetectCOMOnConnect: Boolean;
     procedure SetAutodetectCOMOnConnect(const AValue: Boolean);

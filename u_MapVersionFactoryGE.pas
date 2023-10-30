@@ -1,10 +1,31 @@
-unit u_MapVersionFactoryGE;
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
+unit u_MapVersionFactoryGE deprecated;
 
 interface
 
 uses
+  t_Hash,
   i_MapVersionInfo,
-  i_MapVersionConfig,
+  i_MapVersionFactory,
   u_BaseInterfacedObject;
 
 type
@@ -19,8 +40,8 @@ type
 
   TMapVersionFactoryGE = class(TBaseInterfacedObject, IMapVersionFactory, IMapVersionFactoryGEInternal)
   private
-    function CreateByStoreString(const AValue: string; const AShowPrevVersion: Boolean = False): IMapVersionInfo;
-    function CreateByMapVersion(const AValue: IMapVersionInfo; const AShowPrevVersion: Boolean = False): IMapVersionInfo;
+    function CreateByStoreString(const AValue: string): IMapVersionInfo;
+    function CreateByMapVersion(const AValue: IMapVersionInfo): IMapVersionInfo;
     function IsSameFactoryClass(const AMapVersionFactory: IMapVersionFactory): Boolean;
     { IMapVersionFactoryGEInternal }
     function CreateByGE(
@@ -39,21 +60,23 @@ uses
 type
   TMapVersionInfoGE = class(TBaseInterfacedObject, IMapVersionInfo, IMapVersionInfoGE)
   private
+    FHash: THashValue;
     FVer: Word;
     FGEServer: String;
     FTileDate: String;
   private
+    function GetHash: THashValue;
     function GetUrlString: string;
     function GetStoreString: string;
     function GetCaption: string;
-    function GetShowPrevVersion: Boolean;
     function GetVer: Word;
     function GetGEServer: String;
     function GetTileDate: String;
 
-    //function IsSame(const AValue: IMapVersionInfo): Boolean;
+    function IsSame(const AValue: IMapVersionInfo): Boolean;
   public
     constructor Create(
+      const AHash: THashValue;
       const AVer: Word;
       const AGEServer: String;
       const ATileDate: String
@@ -63,12 +86,14 @@ type
 { TMapVersionInfoGE }
 
 constructor TMapVersionInfoGE.Create(
+  const AHash: THashValue;
   const AVer: Word;
   const AGEServer: String;
   const ATileDate: String
 );
 begin
   inherited Create;
+  FHash := AHash;
   FVer := AVer;
   FGEServer := AGEServer;
   FTileDate := ATileDate;
@@ -85,9 +110,9 @@ begin
   Result := FGEServer;
 end;
 
-function TMapVersionInfoGE.GetShowPrevVersion: Boolean;
+function TMapVersionInfoGE.GetHash: THashValue;
 begin
-  Result := False;
+  Result := FHash;
 end;
 
 function TMapVersionInfoGE.GetStoreString: string;
@@ -124,7 +149,6 @@ begin
   Result := FVer;
 end;
 
-(*
 function TMapVersionInfoGE.IsSame(const AValue: IMapVersionInfo): Boolean;
 var
   VVersionGE: IMapVersionInfoGE;
@@ -135,18 +159,21 @@ begin
     if (AValue = IMapVersionInfo(Self)) or (AValue = IMapVersionInfoGE(Self)) then begin
       Result := True;
     end else begin
-      if Supports(AValue, IMapVersionInfoGE, VVersionGE) then begin
-        Result :=
-          (FGEServer = VVersionGE.GEServer) and
-          (FVer = VVersionGE.Ver) and
-          (FTileDate = VVersionGE.TileDate);
+      if (FHash <> 0) and (AValue.Hash <> 0) and (FHash <> AValue.Hash) then begin
+        Result := False;
       end else begin
-        Result := AValue.StoreString = GetStoreString;
+        if Supports(AValue, IMapVersionInfoGE, VVersionGE) then begin
+          Result :=
+            (FGEServer = VVersionGE.GEServer) and
+            (FVer = VVersionGE.Ver) and
+            (FTileDate = VVersionGE.TileDate);
+        end else begin
+          Result := AValue.StoreString = GetStoreString;
+        end;
       end;
     end;
   end;
 end;
-*)
 
 { TMapVersionFactoryGE }
 
@@ -156,12 +183,11 @@ function TMapVersionFactoryGE.CreateByGE(
   const ATileDate: String
 ): IMapVersionInfo;
 begin
-  Result := TMapVersionInfoGE.Create(AVer, AGEServer, ATileDate);
+  Result := TMapVersionInfoGE.Create(0, AVer, AGEServer, ATileDate);
 end;
 
 function TMapVersionFactoryGE.CreateByMapVersion(
-  const AValue: IMapVersionInfo;
-  const AShowPrevVersion: Boolean
+  const AValue: IMapVersionInfo
 ): IMapVersionInfo;
 begin
   Result := nil;
@@ -175,8 +201,7 @@ begin
 end;
 
 function TMapVersionFactoryGE.CreateByStoreString(
-  const AValue: string;
-  const AShowPrevVersion: Boolean
+  const AValue: string
 ): IMapVersionInfo;
 
   function _StrToWord(
@@ -253,7 +278,7 @@ begin
     end;
   end;
 
-  Result := TMapVersionInfoGE.Create(VVer, VGEServer, VTileDate);
+  Result := TMapVersionInfoGE.Create(0, VVer, VGEServer, VTileDate);
 end;
 
 function TMapVersionFactoryGE.IsSameFactoryClass(const AMapVersionFactory: IMapVersionFactory): Boolean;

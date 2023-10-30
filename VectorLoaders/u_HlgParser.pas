@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_HlgParser;
 
 interface
@@ -5,24 +25,29 @@ interface
 uses
   i_BinaryData,
   i_VectorDataLoader,
-  i_VectorItemsFactory,
+  i_GeometryLonLatFactory,
   i_VectorItemSubset,
   i_VectorDataFactory,
+  i_VectorItemSubsetBuilder,
   u_BaseInterfacedObject;
 
 type
   THlgParser = class(TBaseInterfacedObject, IVectorDataLoader)
   private
-    FFactory: IVectorItemsFactory;
+    FVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+    FVectorDataFactory: IVectorDataFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
   private
     function Load(
       const AData: IBinaryData;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): IVectorItemSubset;
   public
     constructor Create(
-      const AFactory: IVectorItemsFactory
+      const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+      const AVectorDataFactory: IVectorDataFactory;
+      const AVectorGeometryLonLatFactory: IGeometryLonLatFactory
     );
   end;
 
@@ -32,25 +57,30 @@ uses
   Classes,
   IniFiles,
   i_ConfigDataProvider,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   i_VectorDataItemSimple,
   u_ConfigProviderHelpers,
   u_StreamReadOnlyByBinaryData,
-  u_ConfigDataProviderByIniFile,
-  u_VectorDataItemSubset;
+  u_ConfigDataProviderByIniFile;
 
 { THlgParser }
 
-constructor THlgParser.Create(const AFactory: IVectorItemsFactory);
+constructor THlgParser.Create(
+  const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+  const AVectorDataFactory: IVectorDataFactory;
+  const AVectorGeometryLonLatFactory: IGeometryLonLatFactory
+);
 begin
   inherited Create;
-  FFactory := AFactory;
+  FVectorItemSubsetBuilderFactory := AVectorItemSubsetBuilderFactory;
+  FVectorDataFactory := AVectorDataFactory;
+  FVectorGeometryLonLatFactory := AVectorGeometryLonLatFactory;
 end;
 
 function THlgParser.Load(
   const AData: IBinaryData;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): IVectorItemSubset;
 var
   VIniFile: TMemIniFile;
@@ -58,9 +88,9 @@ var
   VIniStream: TStream;
   VHLGData: IConfigDataProvider;
   VPolygonSection: IConfigDataProvider;
-  VPolygon: ILonLatPolygon;
-  VItem: IVectorDataItemSimple;
-  VList: IInterfaceList;
+  VPolygon: IGeometryLonLatPolygon;
+  VItem: IVectorDataItem;
+  VList: IVectorItemSubsetBuilder;
 begin
   Result := nil;
   VPolygon := nil;
@@ -90,20 +120,19 @@ begin
   if VHLGData <> nil then begin
     VPolygonSection := VHLGData.GetSubItem('HIGHLIGHTING');
     if VPolygonSection <> nil then begin
-      VPolygon := ReadPolygon(VPolygonSection, FFactory);
+      VPolygon := ReadPolygon(VPolygonSection, FVectorGeometryLonLatFactory);
     end;
   end;
   if VPolygon <> nil then begin
     VItem :=
-      AFactory.BuildPoly(
-        AIdData,
-        '',
-        '',
+      FVectorDataFactory.BuildItem(
+        AVectorDataItemMainInfoFactory.BuildMainInfo(AIdData, '', ''),
+        nil,
         VPolygon
       );
-    VList := TInterfaceList.Create;
+    VList := FVectorItemSubsetBuilderFactory.Build;
     VList.Add(VItem);
-    Result := TVectorItemSubset.Create(VList);
+    Result := VList.MakeStaticAndClear;
   end;
 end;
 

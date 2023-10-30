@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ValueToStringConverter;
@@ -25,8 +25,12 @@ interface
 uses
   t_GeoTypes,
   t_CommonTypes,
+  i_Notifier,
+  i_Listener,
   i_ValueToStringConverter,
-  u_BaseInterfacedObject;
+  i_ValueToStringConverterConfig,
+  u_BaseInterfacedObject,
+  u_ConfigDataElementBase;
 
 type
   TValueToStringConverter = class(TBaseInterfacedObject, IValueToStringConverter)
@@ -80,12 +84,31 @@ type
     );
   end;
 
+  TValueToStringConverterChangeable = class(TConfigDataElementWithStaticBaseEmptySaveLoad, IValueToStringConverterChangeable)
+  private
+    FConfig: IValueToStringConverterConfig;
+    FDependentNotifier: INotifier;
+    FDependentListener: IListener;
+    procedure OnDependentNotifier;
+  protected
+    function CreateStatic: IInterface; override;
+  private
+    function GetStatic: IValueToStringConverter;
+  public
+    constructor Create(
+      const AConfig: IValueToStringConverterConfig;
+      const ADependentNotifier: INotifier
+    );
+    destructor Destroy; override;
+  end;
+
 implementation
 
 uses
   Math,
   SysUtils,
   StrUtils,
+  u_ListenerByEvent,
   u_ResStrings;
 
 { TValueToStringConverter }
@@ -133,7 +156,7 @@ begin
     Result := 'NAN';
     Exit;
   end;
-  
+
   case FAreaShowFormat of
     asfAuto: begin
       if AAreaInSqm <= 1000000 then begin
@@ -372,6 +395,65 @@ begin
   end;
 
   Result := FormatFloat('0.0', AKmph) + ' ' + FUnitsKmph;
+end;
+
+{ TValueToStringConverterChangeable }
+
+constructor TValueToStringConverterChangeable.Create(
+  const AConfig: IValueToStringConverterConfig;
+  const ADependentNotifier: INotifier
+);
+begin
+  inherited Create;
+  FConfig := AConfig;
+  FDependentNotifier := ADependentNotifier;
+  FDependentListener := TNotifyNoMmgEventListener.Create(Self.OnDependentNotifier);
+  FDependentNotifier.Add(FDependentListener);
+  FConfig.ChangeNotifier.Add(FDependentListener);
+end;
+
+destructor TValueToStringConverterChangeable.Destroy;
+begin
+  if Assigned(FDependentNotifier) and Assigned(FDependentListener) then begin
+    FDependentNotifier.Remove(FDependentListener);
+    FDependentNotifier := nil;
+  end;
+  if Assigned(FConfig) and Assigned(FDependentListener) then begin
+    FConfig.ChangeNotifier.Remove(FDependentListener);
+    FConfig := nil;
+  end;
+  inherited;
+end;
+
+function TValueToStringConverterChangeable.CreateStatic: IInterface;
+var
+  VConfig: IValueToStringConverterConfigStatic;
+  VStatic: IValueToStringConverter;
+begin
+  VConfig := FConfig.GetStatic;
+  VStatic :=
+    TValueToStringConverter.Create(
+      VConfig.DistStrFormat,
+      VConfig.IsLatitudeFirst,
+      VConfig.DegrShowFormat,
+      VConfig.AreaShowFormat
+    );
+  Result := VStatic;
+end;
+
+function TValueToStringConverterChangeable.GetStatic: IValueToStringConverter;
+begin
+  Result := IValueToStringConverter(GetStaticInternal);
+end;
+
+procedure TValueToStringConverterChangeable.OnDependentNotifier;
+begin
+  LockWrite;
+  try
+    SetChanged;
+  finally
+    UnlockWrite;
+  end;
 end;
 
 end.

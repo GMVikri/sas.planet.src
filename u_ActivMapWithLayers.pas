@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ActivMapWithLayers;
@@ -23,10 +23,12 @@ unit u_ActivMapWithLayers;
 interface
 
 uses
-  i_GUIDSet,
   i_ConfigDataProvider,
   i_ConfigDataWriteProvider,
   i_MapTypes,
+  i_MapTypeSet,
+  i_MapTypeSetBuilder,
+  i_MapTypeSetChangeable,
   i_ActiveMapsConfig,
   u_NotifyWithGUIDEvent,
   u_MainActiveMap;
@@ -34,6 +36,7 @@ uses
 type
   TActivMapWithLayers = class(TMainActiveMap, IActivMapWithLayers)
   private
+    FMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
     FLayerSetSelectNotyfier: INotifierWithGUID;
     FLayerSetUnselectNotyfier: INotifierWithGUID;
 
@@ -59,8 +62,11 @@ type
     procedure DoReadConfig(const AConfigData: IConfigDataProvider); override;
     procedure DoWriteConfig(const AConfigData: IConfigDataWriteProvider); override;
   public
-    constructor Create(const AMapsSet, ALayersSet: IMapTypeSet);
-    destructor Destroy; override;
+    constructor Create(
+      const AIsAllowNilMap: Boolean;
+      const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
+      const AMapsSet, ALayersSet: IMapTypeSet
+    );
   end;
 
 implementation
@@ -71,10 +77,7 @@ uses
   ActiveX,
   c_ZeroGUID,
   i_StringListStatic,
-  u_GUIDInterfaceSet,
-  u_MapTypeSet,
-  u_ActiveMapSingleAbstract,
-  u_ActiveMapSingleSet,
+  u_Synchronizer,
   u_ActiveMapsSet;
 
 const
@@ -82,49 +85,47 @@ const
 
 { TActivMapWithLayers }
 
-constructor TActivMapWithLayers.Create(const AMapsSet, ALayersSet: IMapTypeSet);
+constructor TActivMapWithLayers.Create(
+  const AIsAllowNilMap: Boolean;
+  const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
+  const AMapsSet, ALayersSet: IMapTypeSet
+);
 var
   VEnun: IEnumGUID;
   VGUID: TGUID;
   i: Cardinal;
   VMapType: IMapType;
-  VSingleMap: IActiveMapSingle;
-  VAllMapsList: TMapTypeSet;
-  VSingleSet: IGUIDInterfaceSet;
+  VAllMapsList: IMapTypeSetBuilder;
   VMainMapChangeNotyfier: INotifierWithGUID;
+  VSync: IReadWriteSync;
 begin
-  VMainMapChangeNotyfier := TNotifierWithGUID.Create;
-  FLayerSetSelectNotyfier := TNotifierWithGUID.Create;
-  FLayerSetUnselectNotyfier := TNotifierWithGUID.Create;
+  FMapTypeSetBuilderFactory := AMapTypeSetBuilderFactory;
+  VSync := GSync.SyncVariable.Make(Self.ClassName + 'Notifiers');
+  VMainMapChangeNotyfier := TNotifierWithGUID.Create(VSync);
+  FLayerSetSelectNotyfier := TNotifierWithGUID.Create(VSync);
+  FLayerSetUnselectNotyfier := TNotifierWithGUID.Create(VSync);
   FLayersSet := ALayersSet;
 
-  VSingleSet := TGUIDInterfaceSet.Create(False);
-  VAllMapsList := TMapTypeSet.Create(True);
+  VAllMapsList := FMapTypeSetBuilderFactory.Build(True);
+  VAllMapsList.Capacity := AMapsSet.Count + ALayersSet.Count;
 
   VEnun := AMapsSet.GetIterator;
   while VEnun.Next(1, VGUID, i) = S_OK do begin
     VMapType := AMapsSet.GetMapTypeByGUID(VGUID);
     VAllMapsList.Add(VMapType);
-    VSingleMap := TActiveMapSingleMainMap.Create(VMapType, False, VMainMapChangeNotyfier);
-    VSingleSet.Add(VGUID, VSingleMap);
   end;
 
   VEnun := FLayersSet.GetIterator;
   while VEnun.Next(1, VGUID, i) = S_OK do begin
     VMapType := FLayersSet.GetMapTypeByGUID(VGUID);
     VAllMapsList.Add(VMapType);
-    VSingleMap := TActiveMapSingleLayer.Create(
-      VMapType,
-      FLayerSetSelectNotyfier,
-      FLayerSetUnselectNotyfier
-    );
-    VSingleSet.Add(VGUID, VSingleMap);
   end;
-  inherited Create(AMapsSet, VMainMapChangeNotyfier, TActiveMapSingleSet.Create(VSingleSet));
+  inherited Create(AIsAllowNilMap, AMapsSet, VMainMapChangeNotyfier);
 
-  FAllMapsSet := VAllMapsList;
+  FAllMapsSet := VAllMapsList.MakeAndClear;
 
   FActiveLayersSet := TLayerSetChangeable.Create(
+    FMapTypeSetBuilderFactory,
     FLayersSet,
     FLayerSetSelectNotyfier,
     FLayerSetUnselectNotyfier
@@ -132,20 +133,10 @@ begin
 
   FAllActiveMapsSet :=
     TMapsSetChangeableByMainMapAndLayersSet.Create(
+      FMapTypeSetBuilderFactory,
       GetActiveMap,
       FActiveLayersSet
     );
-end;
-
-destructor TActivMapWithLayers.Destroy;
-begin
-  FLayerSetSelectNotyfier := nil;
-  FLayerSetUnselectNotyfier := nil;
-
-  FAllMapsSet := nil;
-  FActiveLayersSet := nil;
-  FAllActiveMapsSet := nil;
-  inherited;
 end;
 
 procedure TActivMapWithLayers.DoReadConfig(const AConfigData: IConfigDataProvider);

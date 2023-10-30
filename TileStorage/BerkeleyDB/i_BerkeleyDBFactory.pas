@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_BerkeleyDBFactory;
@@ -23,12 +23,16 @@ unit i_BerkeleyDBFactory;
 interface
 
 uses
-  i_BerkeleyDB;
+  i_BerkeleyDB,
+  i_BerkeleyDBEnv;
 
 type
   IBerkeleyDBFactory = interface
     ['{288B5F70-F0AB-433B-8267-EB6D3205A16A}']
-    function CreateDatabase(const ADatabaseFileName: string): IBerkeleyDB;
+    function CreateDatabase(
+      const ADatabaseFileName: string;
+      const AEnvironment: IBerkeleyDBEnvironment
+    ): IBerkeleyDB;
   end;
 
 implementation

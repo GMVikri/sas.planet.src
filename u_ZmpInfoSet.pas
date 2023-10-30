@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ZmpInfoSet;
@@ -29,7 +29,8 @@ uses
   i_CoordConverterFactory,
   i_ArchiveReadWriteFactory,
   i_LanguageManager,
-  i_Bitmap32StaticFactory,
+  i_MapVersionFactory,
+  i_Bitmap32BufferFactory,
   i_ContentTypeManager,
   i_FileNameIterator,
   i_ZmpConfig,
@@ -49,7 +50,8 @@ type
       const ACoordConverterFactory: ICoordConverterFactory;
       const AArchiveReadWriteFactory: IArchiveReadWriteFactory;
       const AContentTypeManager: IContentTypeManager;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const AVersionFactory: IMapVersionFactory;
+      const ABitmapFactory: IBitmap32BufferFactory;
       const ALanguageManager: ILanguageManager;
       const AFilesIterator: IFileNameIterator
     );
@@ -74,7 +76,8 @@ constructor TZmpInfoSet.Create(
   const ACoordConverterFactory: ICoordConverterFactory;
   const AArchiveReadWriteFactory: IArchiveReadWriteFactory;
   const AContentTypeManager: IContentTypeManager;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const AVersionFactory: IMapVersionFactory;
+  const ABitmapFactory: IBitmap32BufferFactory;
   const ALanguageManager: ILanguageManager;
   const AFilesIterator: IFileNameIterator
 );
@@ -106,6 +109,7 @@ begin
           ALanguageManager,
           ACoordConverterFactory,
           AContentTypeManager,
+          AVersionFactory,
           ABitmapFactory,
           VFileName,
           VZmpMapConfig,

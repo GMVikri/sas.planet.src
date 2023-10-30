@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2013, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageArchive;
@@ -31,11 +31,14 @@ uses
   i_TileInfoBasic,
   i_CoordConverter,
   i_MapVersionInfo,
+  i_MapVersionRequest,
+  i_MapVersionListStatic,
   i_ContentTypeInfo,
   i_ArchiveReadWrite,
   i_ContentTypeManager,
   i_TileFileNameParser,
   i_TileFileNameGenerator,
+  i_TileStorageAbilities,
   i_NotifierTilePyramidUpdate,
   u_BaseInterfacedObject;
 
@@ -56,11 +59,10 @@ type
     function GetArchiveWriter: IArchiveWriter; virtual;
   protected
     { ITileStorage }
+    function GetStorageTypeAbilities: ITileStorageTypeAbilities;
     function GetTileNotifier: INotifierTilePyramidUpdate;
     function GetState: IStorageStateChangeble;
     function GetCoordConverter: ICoordConverter;
-    function GetIsFileCache: Boolean;
-    function GetIsCanSaveMultiVersionTiles: Boolean;
     function GetTileFileName(
       const AXY: TPoint;
       const AZoom: byte;
@@ -72,34 +74,36 @@ type
       const AVersionInfo: IMapVersionInfo;
       const AMode: TGetTileInfoMode
     ): ITileInfoBasic;
+    function GetTileInfoEx(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersionInfo: IMapVersionRequest;
+      const AMode: TGetTileInfoMode
+    ): ITileInfoBasic;
     function DeleteTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersion: IMapVersionInfo
     ): Boolean;
-    procedure SaveTile(
+    function SaveTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersion: IMapVersionInfo;
       const ALoadDate: TDateTime;
       const AContentType: IContentTypeInfoBasic;
-      const AData: IBinaryData
-    );
-    procedure SaveTNE(
-      const AXY: TPoint;
-      const AZoom: byte;
-      const AVersion: IMapVersionInfo;
-      const ALoadDate: TDateTime
-    );
+      const AData: IBinaryData;
+      const AIsOverwrite: Boolean
+    ): Boolean;
+
     function GetListOfTileVersions(
       const AXY: TPoint;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): IMapVersionListStatic;
     function GetTileRectInfo(
       const ARect: TRect;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): ITileRectInfo;
     function ScanTiles(
       const AIgnoreTNE: Boolean;
@@ -120,7 +124,7 @@ implementation
 
 uses
   u_Synchronizer,
-  u_BinaryDataByMemStream;
+  u_BinaryData;
 
 { TTileStorageArchive }
 
@@ -143,7 +147,7 @@ begin
   FCoordConverter := ACoordConverter;
   FTileNameParser := ATileNameParser;
   FTileNameGenerator := ATileNameGenerator;
-  FSync := MakeSyncRW_Big(Self, False); 
+  FSync := GSync.SyncBig.Make(Self.ClassName);
 end;
 
 function TTileStorageArchive.GetArchiveWriter: IArchiveWriter;
@@ -161,19 +165,14 @@ begin
   Result := FState;
 end;
 
+function TTileStorageArchive.GetStorageTypeAbilities: ITileStorageTypeAbilities;
+begin
+  Result := nil;
+end;
+
 function TTileStorageArchive.GetCoordConverter: ICoordConverter;
 begin
   Result := FCoordConverter;
-end;
-
-function TTileStorageArchive.GetIsFileCache: Boolean;
-begin
-  Result := False;
-end;
-
-function TTileStorageArchive.GetIsCanSaveMultiVersionTiles: Boolean;
-begin
-  Result := False;
 end;
 
 function TTileStorageArchive.GetTileFileName(
@@ -195,6 +194,16 @@ begin
   Result := nil;
 end;
 
+function TTileStorageArchive.GetTileInfoEx(
+  const AXY: TPoint;
+  const AZoom: byte;
+  const AVersionInfo: IMapVersionRequest;
+  const AMode: TGetTileInfoMode
+): ITileInfoBasic;
+begin
+  Result := nil;
+end;
+
 function TTileStorageArchive.DeleteTile(
   const AXY: TPoint;
   const AZoom: byte;
@@ -204,48 +213,34 @@ begin
   Result := False;
 end;
 
-procedure TTileStorageArchive.SaveTile(
+function TTileStorageArchive.SaveTile(
   const AXY: TPoint;
   const AZoom: byte;
   const AVersion: IMapVersionInfo;
   const ALoadDate: TDateTime;
   const AContentType: IContentTypeInfoBasic;
-  const AData: IBinaryData
-);
-var
-  VTileName: string;
-  VArchiveWriter: IArchiveWriter;
-begin
-  FSync.BeginWrite;
-  try
-    VArchiveWriter := GetArchiveWriter;
-    if Assigned(VArchiveWriter) then begin
-      VTileName := FTileNameGenerator.GetTileFileName(AXY, AZoom) + FContentType.GetDefaultExt;
-      VArchiveWriter.AddFile(AData, VTileName, ALoadDate);
-    end;
-  finally
-    FSync.EndWrite;
-  end;
-end;
-
-procedure TTileStorageArchive.SaveTNE(
-  const AXY: TPoint;
-  const AZoom: byte;
-  const AVersion: IMapVersionInfo;
-  const ALoadDate: TDateTime
-);
+  const AData: IBinaryData;
+  const AIsOverwrite: Boolean
+): Boolean;
 var
   VTileName: string;
   VData: IBinaryData;
   VArchiveWriter: IArchiveWriter;
 begin
+  Result := False;
   FSync.BeginWrite;
   try
     VArchiveWriter := GetArchiveWriter;
     if Assigned(VArchiveWriter) then begin
-      VData := TBinaryDataByMemStream.CreateFromMem(0, nil);
-      VTileName := FTileNameGenerator.GetTileFileName(AXY, AZoom) + '.tne';
+      if Assigned(AContentType) and Assigned(AData) then begin
+        VData := AData;
+        VTileName := FTileNameGenerator.GetTileFileName(AXY, AZoom) + FContentType.GetDefaultExt;
+      end else begin
+        VData := TBinaryData.Create(0, nil);
+        VTileName := FTileNameGenerator.GetTileFileName(AXY, AZoom) + '.tne';
+      end;
       VArchiveWriter.AddFile(VData, VTileName, ALoadDate);
+      Result := True;
     end;
   finally
     FSync.EndWrite;
@@ -255,7 +250,7 @@ end;
 function TTileStorageArchive.GetListOfTileVersions(
   const AXY: TPoint;
   const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo
+  const AVersionInfo: IMapVersionRequest
 ): IMapVersionListStatic;
 begin
   Result := nil;
@@ -264,7 +259,7 @@ end;
 function TTileStorageArchive.GetTileRectInfo(
   const ARect: TRect;
   const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo
+  const AVersionInfo: IMapVersionRequest
 ): ITileRectInfo;
 begin
   Result := nil;

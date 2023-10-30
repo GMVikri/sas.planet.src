@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BerkeleyDBEnv;
@@ -26,9 +26,12 @@ uses
   Classes,
   SyncObjs,
   libdb51,
-  i_Listener,
+  t_BerkeleyDB,
+  i_BerkeleyDB,
   i_BerkeleyDBEnv,
+  i_BerkeleyDBPool,
   i_GlobalBerkeleyDBHelper,
+  i_TileStorageBerkeleyDBConfigStatic,
   u_BerkeleyDBMsgLogger,
   u_BaseInterfacedObject;
 
@@ -50,26 +53,32 @@ type
     FLastRemoveLogTime: Cardinal;
     FCS: TCriticalSection;
     FClientsCount: Integer;
-    FListener: IListener;
     FTxnList: TList;
+    FDatabasePool: IBerkeleyDBPool;
+    FIsFullVerboseMode: Boolean;
+    FDatabasePageSize: Cardinal;
     function Open: Boolean;
-    procedure Sync;
     procedure MakeDefConfigFile(const AEnvHomePath: string);
+    procedure RemoveUnUsedLogs;
+    procedure TransactionCheckPoint;
   private
     { IBerkeleyDBEnvironment }
     function GetEnvironmentPointerForApi: Pointer;
     function GetRootPath: string;
     function GetClientsCount: Integer;
+    function Acquire(const ADatabaseFileName: string): IBerkeleyDB;
+    procedure Release(const ADatabase: IBerkeleyDB);
     procedure SetClientsCount(const AValue: Integer);
-    procedure RemoveUnUsedLogs;
     procedure TransactionBegin(out ATxn: PBerkeleyTxn);
     procedure TransactionCommit(var ATxn: PBerkeleyTxn);
     procedure TransactionAbort(var ATxn: PBerkeleyTxn);
-    procedure TransactionCheckPoint;
-    function GetSyncCallListener: IListener;
+    procedure Sync(out AHotDatabaseCount: Integer);
   public
     constructor Create(
       const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
+      const AIsReadOnly: Boolean;
+      const AStorageConfig: ITileStorageBerkeleyDBConfigStatic;
+      const AStorageEPSG: Integer;
       const AEnvRootPath: string
     );
     destructor Destroy; override;
@@ -80,29 +89,33 @@ implementation
 uses
   Windows,
   SysUtils,
-  u_ListenerByEvent;
+  i_BinaryData,
+  i_BerkeleyDBFactory,
+  u_BerkeleyDBKey,
+  u_BerkeleyDBValue,
+  u_BerkeleyDBPool,
+  u_BerkeleyDBFactory;
 
 const
   cBerkeleyDBEnvSubDir = 'env';
-  cBerkeleyDBEnvErrPfx = 'BerkeleyDB Env';
+  cBerkeleyDBEnvErrPfx: AnsiString = 'BerkeleyDB Env';
   cBerkeleyDBEnvConfig = 'DB_CONFIG';
   cVerboseMsgFileName  = 'msg.log';
 
 procedure BerkeleyDBErrCall(dbenv: PDB_ENV; errpfx, msg: PAnsiChar); cdecl;
 var
-  VMsg: AnsiString;
+  VMsg: string;
   VEnvPrivate: PBerkeleyDBEnvAppPrivate;
 begin
-  VMsg := errpfx + AnsiString(': ') + msg;
+  VMsg := string(errpfx) + ': ' + string(msg);
   VEnvPrivate := dbenv.app_private;
   if Assigned(VEnvPrivate) then begin
-    VMsg := VMsg + #09 + VEnvPrivate.FEnvRootPath;
+    VMsg := VMsg + ' [root path: ' + VEnvPrivate.FEnvRootPath + ']';
+    if Assigned(VEnvPrivate.FHelper) then begin
+      VEnvPrivate.FHelper.LogException('[BDB ErrCall] ' + VMsg);
+    end;
   end;
-  if Assigned(VEnvPrivate) and Assigned(VEnvPrivate.FHelper) then begin
-    VEnvPrivate.FHelper.RaiseException(VMsg);
-  end else begin
-    raise EBerkeleyDBExeption.Create(string(VMsg));
-  end;
+  raise EBerkeleyDBExeption.Create(VMsg);
 end;
 
 procedure BerkeleyDBMsgCall(dbenv: PDB_ENV; msg: PAnsiChar); cdecl;
@@ -111,7 +124,7 @@ var
 begin
   VEnvPrivate := dbenv.app_private;
   if Assigned(VEnvPrivate) and Assigned(VEnvPrivate.FMsgLogger) then begin
-    VEnvPrivate.FMsgLogger.SaveVerbMsg(msg);
+    VEnvPrivate.FMsgLogger.SaveVerbMsg(string(msg));
   end;
 end;
 
@@ -119,22 +132,47 @@ end;
 
 constructor TBerkeleyDBEnv.Create(
   const AGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
+  const AIsReadOnly: Boolean;
+  const AStorageConfig: ITileStorageBerkeleyDBConfigStatic;
+  const AStorageEPSG: Integer;
   const AEnvRootPath: string
 );
+var
+  VDatabaseFactory: IBerkeleyDBFactory;
 begin
+  Assert(AGlobalBerkeleyDBHelper <> nil);
+  Assert(AStorageConfig <> nil);
+
   inherited Create;
   dbenv := nil;
   FTxnList := TList.Create;
+
   New(FAppPrivate);
   FAppPrivate.FEnvRootPath := AEnvRootPath;
   FAppPrivate.FHelper := AGlobalBerkeleyDBHelper;
   FAppPrivate.FMsgLogger := TBerkeleyDBMsgLogger.Create(IncludeTrailingPathDelimiter(AEnvRootPath) + cVerboseMsgFileName);
+
+  VDatabaseFactory := TBerkeleyDBFactory.Create(
+    AStorageConfig.DatabasePageSize,
+    AStorageConfig.OnDeadLockRetryCount,
+    AIsReadOnly,
+    TBerkeleyDBMetaKey.Create as IBinaryData,
+    TBerkeleyDBMetaValue.Create(AStorageEPSG) as IBinaryData
+  );
+
+  FDatabasePool := TBerkeleyDBPool.Create(
+    VDatabaseFactory,
+    AStorageConfig.PoolSize,
+    AStorageConfig.PoolObjectTTL
+  );
+
+  FIsFullVerboseMode := AStorageConfig.IsFullVerboseMode;
+  FDatabasePageSize := AStorageConfig.DatabasePageSize;
   FCS := TCriticalSection.Create;
   FActive := False;
   FLastRemoveLogTime := 0;
   FClientsCount := 1;
   FLibInitOk := InitBerkeleyDB;
-  FListener := TNotifyNoMmgEventListener.Create(Self.Sync);
 end;
 
 destructor TBerkeleyDBEnv.Destroy;
@@ -143,7 +181,7 @@ var
   txn: PDB_TXN;
 begin
   try
-    FListener := nil;
+    FDatabasePool := nil;
     if dbenv <> nil then begin
       for I := 0 to FTxnList.Count - 1 do begin
         txn := FTxnList.Items[I];
@@ -156,12 +194,15 @@ begin
       dbenv.close(dbenv, 0);
     end;
   finally
-    FAppPrivate.FHelper := nil;
-    FAppPrivate.FMsgLogger.Free;
-    Dispose(FAppPrivate);
-    FTxnList.Free;
-    FCS.Free;
-    inherited Destroy;
+    if Assigned(FAppPrivate) then begin
+      FAppPrivate.FHelper := nil;
+      FAppPrivate.FMsgLogger.Free;
+      Dispose(FAppPrivate);
+      FAppPrivate := nil;
+    end;
+    FreeAndNil(FTxnList);
+    FreeAndNil(FCS);
+    inherited;
   end;
 end;
 
@@ -183,11 +224,11 @@ begin
   if not FileExists(VFile) then begin
     VList := TStringList.Create;
     try
-      VList.Add('set_flags DB_TXN_WRITE_NOSYNC on');
+      VList.Add('set_flags DB_TXN_NOWAIT on');
+      VList.Add('set_flags DB_TXN_WRITE_NOSYNC off');
       VList.Add('set_lg_dir .');
       VList.Add('set_data_dir ..');
       VList.Add('set_cachesize 0 2097152 1');
-      VList.Add('mutex_set_max 30000');
       VList.Add('set_lg_max 10485760');
       VList.Add('set_lg_bsize 2097152');
       VList.Add('log_set_config DB_LOG_AUTO_REMOVE on');
@@ -200,28 +241,65 @@ end;
 
 function TBerkeleyDBEnv.Open: Boolean;
 var
-  VPath: AnsiString;
+  VPath: string;
+  VPathUtf8: UTF8String;
 begin
   if not FActive and FLibInitOk then begin
-
+    Assert(FAppPrivate <> nil);
     VPath := FAppPrivate.FEnvRootPath + cBerkeleyDBEnvSubDir + PathDelim;
+    VPathUtf8 := AnsiToUtf8(VPath);
+
     if not DirectoryExists(VPath) then begin
       ForceDirectories(VPath);
     end;
 
     MakeDefConfigFile(VPath);
-    
+
     CheckBDB(db_env_create(dbenv, 0));
     dbenv.app_private := FAppPrivate;
-    dbenv.set_errpfx(dbenv, CBerkeleyDBEnvErrPfx);
+    dbenv.set_errpfx(dbenv, PAnsiChar(cBerkeleyDBEnvErrPfx));
     dbenv.set_errcall(dbenv, BerkeleyDBErrCall);
     dbenv.set_msgcall(dbenv, BerkeleyDBMsgCall);
     CheckBDB(dbenv.set_alloc(dbenv, @GetMemory, @ReallocMemory, @FreeMemory));
 
+    CheckBDB(dbenv.set_flags(dbenv, DB_TXN_NOWAIT, 1));
+    CheckBDB(dbenv.set_flags(dbenv, DB_TXN_WRITE_NOSYNC, 0));
+    CheckBDB(dbenv.set_lg_dir(dbenv, '.'));
+    CheckBDB(dbenv.set_data_dir(dbenv, '..'));
+    CheckBDB(dbenv.set_cachesize(dbenv, 0, 2*1024*1024, 1));
+
+    if FDatabasePageSize <= 4096 then begin
+      CheckBDB(dbenv.set_mp_pagesize(dbenv, FDatabasePageSize));
+    end else begin
+      CheckBDB(dbenv.set_mp_pagesize(dbenv, 4096));
+    end;
+
+    CheckBDB(dbenv.set_lg_max(dbenv, 10*1024*1024));
+    CheckBDB(dbenv.set_lg_bsize(dbenv, 2*1024*1024));
+    CheckBDB(dbenv.log_set_config(dbenv, DB_LOG_AUTO_REMOVE, 1));
+
+    if FIsFullVerboseMode then begin
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_DEADLOCK, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_FILEOPS, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_FILEOPS_ALL, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_RECOVERY, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REGISTER, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REPLICATION, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REP_ELECT, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REP_LEASE, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REP_MISC, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REP_MSGS, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REP_SYNC, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REP_SYSTEM, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REPMGR_CONNFAIL, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_REPMGR_MISC, 1));
+      CheckBDB(dbenv.set_verbose(dbenv, DB_VERB_WAITSFOR, 1));
+    end;
+
     CheckBDB(
       dbenv.open(
         dbenv,
-        Pointer(AnsiToUtf8(VPath)),
+        PAnsiChar(VPathUtf8),
         DB_CREATE_ or
         DB_RECOVER or
         DB_INIT_LOCK or
@@ -320,10 +398,13 @@ begin
   end;
 end;
 
-procedure TBerkeleyDBEnv.Sync;
+procedure TBerkeleyDBEnv.Sync(out AHotDatabaseCount: Integer);
 begin
   TransactionCheckPoint;
   RemoveUnUsedLogs;
+  if Assigned(FDatabasePool) then begin
+    FDatabasePool.Sync(AHotDatabaseCount);
+  end;
 end;
 
 function TBerkeleyDBEnv.GetEnvironmentPointerForApi: Pointer;
@@ -360,9 +441,17 @@ begin
   end;
 end;
 
-function TBerkeleyDBEnv.GetSyncCallListener: IListener;
+function TBerkeleyDBEnv.Acquire(const ADatabaseFileName: string): IBerkeleyDB;
 begin
-  Result := FListener;
+  Assert(FDatabasePool <> nil);
+  Result := FDatabasePool.Acquire(ADatabaseFileName, Self);
+  Assert(Result <> nil);
+end;
+
+procedure TBerkeleyDBEnv.Release(const ADatabase: IBerkeleyDB);
+begin
+  Assert(FDatabasePool <> nil);
+  FDatabasePool.Release(ADatabase);
 end;
 
 end.

@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_InvisibleBrowserByFormSynchronize;
 
 interface
@@ -19,6 +39,7 @@ type
     FfrmInvisibleBrowser: TfrmInvisibleBrowser;
   private
     procedure NavigateAndWait(const AUrl: WideString);
+    procedure InternalCreateBrowser;
   public
     constructor Create(
       const ALanguageManager: ILanguageManager;
@@ -77,7 +98,7 @@ constructor TInvisibleBrowserByFormSynchronize.Create(
 );
 begin
   inherited Create;
-  FCS := MakeSyncRW_Var(Self, FALSE);
+  FCS := GSync.SyncVariable.Make(Self.ClassName);
   FProxyConfig := AProxyConfig;
   FLanguageManager := ALanguageManager;
 end;
@@ -91,6 +112,11 @@ begin
   inherited;
 end;
 
+procedure TInvisibleBrowserByFormSynchronize.InternalCreateBrowser;
+begin
+  FfrmInvisibleBrowser := TfrmInvisibleBrowser.Create(FLanguageManager, FProxyConfig);
+end;
+
 procedure TInvisibleBrowserByFormSynchronize.NavigateAndWait(const AUrl: WideString);
 var
   VSyncNav: TSyncNavigate;
@@ -98,7 +124,7 @@ begin
   FCS.BeginWrite;
   try
     if FfrmInvisibleBrowser = nil then begin
-      FfrmInvisibleBrowser := TfrmInvisibleBrowser.Create(FLanguageManager, FProxyConfig);
+      TThread.Synchronize(nil, InternalCreateBrowser);
     end;
   finally
     FCS.EndWrite;

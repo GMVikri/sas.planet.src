@@ -1,10 +1,30 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_StorageStateInternal;
 
 interface
 
 uses
   t_CommonTypes,
-  i_StorageTypeAbilities,
+  i_TileStorageAbilities,
   i_StorageState,
   i_StorageStateInternal,
   u_ConfigDataElementBase;
@@ -12,7 +32,7 @@ uses
 type
   TStorageStateInternal = class(TConfigDataElementWithStaticBaseEmptySaveLoad, IStorageStateInternal, IStorageStateChangeble)
   private
-    FStorageTypeAbilities: IStorageTypeAbilities;
+    FStorageForceAbilities: ITileStorageAbilities;
 
     FReadAccess: TAccesState;
     FWriteAccess: TAccesState;
@@ -40,7 +60,7 @@ type
     function GetStatic: IStorageStateStatic;
   public
     constructor Create(
-      const AStorageTypeAbilities: IStorageTypeAbilities
+      const AStorageForceAbilities: ITileStorageAbilities
     );
   end;
 
@@ -52,35 +72,40 @@ uses
 { TStorageStateInternal }
 
 constructor TStorageStateInternal.Create(
-  const AStorageTypeAbilities: IStorageTypeAbilities
+  const AStorageForceAbilities: ITileStorageAbilities
 );
 begin
+  Assert(AStorageForceAbilities <> nil);
   inherited Create;
-  FStorageTypeAbilities := AStorageTypeAbilities;
+  FStorageForceAbilities := AStorageForceAbilities;
+
   FReadAccess := asUnknown;
   FWriteAccess := asUnknown;
   FDeleteAccess := asUnknown;
   FAddAccess := asUnknown;
   FReplaceAccess := asUnknown;
+  if not FStorageForceAbilities.AllowRead then begin
+    FReadAccess := asDisabled;
+  end;
 
-  if FStorageTypeAbilities.IsReadOnly then begin
+  if FStorageForceAbilities.IsReadOnly then begin
     FWriteAccess := asDisabled;
     FDeleteAccess := asDisabled;
     FAddAccess := asDisabled;
     FReplaceAccess := asDisabled;
   end else begin
     FWriteAccess := asUnknown;
-    if FStorageTypeAbilities.AllowAdd then begin
+    if FStorageForceAbilities.AllowAdd then begin
       FAddAccess := asUnknown;
     end else begin
       FAddAccess := asDisabled;
     end;
-    if FStorageTypeAbilities.AllowDelete then begin
+    if FStorageForceAbilities.AllowDelete then begin
       FDeleteAccess := asUnknown;
     end else begin
       FDeleteAccess := asDisabled;
     end;
-    if FStorageTypeAbilities.AllowReplace then begin
+    if FStorageForceAbilities.AllowReplace then begin
       FReplaceAccess := asUnknown;
     end else begin
       FReplaceAccess := asDisabled;
@@ -166,7 +191,7 @@ var
   VValue: TAccesState;
 begin
   VValue := AValue;
-  if FStorageTypeAbilities.IsReadOnly or not FStorageTypeAbilities.AllowAdd then begin
+  if FStorageForceAbilities.IsReadOnly or not FStorageForceAbilities.AllowAdd then begin
     VValue := asDisabled;
   end;
 
@@ -197,7 +222,7 @@ var
   VValue: TAccesState;
 begin
   VValue := AValue;
-  if FStorageTypeAbilities.IsReadOnly or not FStorageTypeAbilities.AllowDelete then begin
+  if FStorageForceAbilities.IsReadOnly or not FStorageForceAbilities.AllowDelete then begin
     VValue := asDisabled;
   end;
 
@@ -247,7 +272,7 @@ var
   VValue: TAccesState;
 begin
   VValue := AValue;
-  if FStorageTypeAbilities.IsReadOnly or not FStorageTypeAbilities.AllowReplace then begin
+  if FStorageForceAbilities.IsReadOnly or not FStorageForceAbilities.AllowReplace then begin
     VValue := asDisabled;
   end;
 
@@ -278,10 +303,10 @@ var
   VValue: TAccesState;
 begin
   VValue := AValue;
-  if FStorageTypeAbilities.IsReadOnly or not (
-    FStorageTypeAbilities.AllowReplace or
-    FStorageTypeAbilities.AllowAdd or
-    FStorageTypeAbilities.AllowDelete
+  if FStorageForceAbilities.IsReadOnly or not (
+    FStorageForceAbilities.AllowReplace or
+    FStorageForceAbilities.AllowAdd or
+    FStorageForceAbilities.AllowDelete
     ) then begin
     VValue := asDisabled;
   end;

@@ -4,7 +4,8 @@ interface
 
 uses
   TestFramework,
-  u_HashCacheWithQueuesAbstract;
+  i_HashInterfaceCache,
+  u_BaseInterfacedObject;
 
 type
   ISimple = interface
@@ -35,16 +36,15 @@ type
     function GetByKey(AKey: UInt64): ISimple;
   end;
 
-  THashCacheWithQueuesTest = class(THashCacheWithQueuesAbstract, IHashCacheWithQueuesTest)
+  THashCacheWithQueuesTest = class(TBaseInterfacedObject, IHashCacheWithQueuesTest)
   private
     FOpId: Integer;
-  protected
-    procedure CreateByKey(
+    FCache: IHashInterfaceCache;
+  private
+    function CreateByKey(
       const AKey: UInt64;
-      AData: Pointer;
-      out Item: IInterface
-    ); override;
-    function GetIndexByKey(const AKey: UInt64): Integer; override;
+      const AData: Pointer
+    ): IInterface;
   private
     function GetByKey(AKey: UInt64): ISimple;
   public
@@ -97,6 +97,9 @@ type
 
 implementation
 
+uses
+  u_HashInterfaceCache2Q;
+
 { TSimple }
 
 constructor TSimple.Create(
@@ -126,21 +129,28 @@ constructor THashCacheWithQueuesTest.Create(
   AFirstOutCount: Integer
 );
 begin
-  inherited Create(6, AFirstUseCount, AMultiUseCount, AFirstOutCount);
+  inherited Create;
   FOpId := 0;
+  FCache :=
+    THashInterfaceCache2Q.Create(
+      Self.CreateByKey,
+      6,
+      AFirstUseCount,
+      AMultiUseCount,
+      AFirstOutCount
+    );
 end;
 
-procedure THashCacheWithQueuesTest.CreateByKey(
+function THashCacheWithQueuesTest.CreateByKey(
   const AKey: UInt64;
-  AData: Pointer;
-  out Item: IInterface
-);
+  const AData: Pointer
+): IInterface;
 var
   VItem: ISimple;
 begin
   inherited;
   VItem := TSimple.Create(AKey, FOpId);
-  Item := VItem;
+  Result := VItem;
   Inc(FOpId);
 end;
 
@@ -148,13 +158,8 @@ function THashCacheWithQueuesTest.GetByKey(AKey: UInt64): ISimple;
 var
   VResult: IInterface;
 begin
-  GetOrCreateItem(AKey, nil, VResult);
+  VResult := FCache.GetOrCreateItem(AKey, nil);
   Result := VResult as ISimple;
-end;
-
-function THashCacheWithQueuesTest.GetIndexByKey(const AKey: UInt64): Integer;
-begin
-  Result := AKey and $3f;
 end;
 
 { TestTHashCacheWithQueuesTestAs2q }

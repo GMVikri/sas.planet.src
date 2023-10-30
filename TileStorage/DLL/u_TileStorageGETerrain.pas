@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,11 +14,11 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
-unit u_TileStorageGETerrain;
+unit u_TileStorageGETerrain deprecated;
 
 interface
 
@@ -69,16 +69,11 @@ type
     function GetNotifier: INotifier;
   end;
 
-  TTileStorageGETerrain = class(TTileStorageDLLTerrain)
-  protected
-    function InternalLib_Initialize: Boolean; override;
-  end;
-
   TTileStorageGCTerrain = class(TTileStorageDLLTerrain)
   protected
     function InternalLib_Initialize: Boolean; override;
   end;
-  
+
 implementation
 
 uses
@@ -117,7 +112,7 @@ begin
           WriteBuffer(ATileBuffer^, ATileInfo^.TileSize);
           Position := 0;
         end;
-        Result := TRUE;                                                                                    
+        Result := TRUE;
       end;
     except
     end;
@@ -131,13 +126,13 @@ constructor TTileStorageDLLTerrain.Create(
 );
 begin
   inherited Create;
-  FStoragePath := AStoragePath;
+  FStoragePath := IncludeTrailingPathDelimiter(AStoragePath);
   FReadAccess := asUnknown;
   FDLLHandle := 0;
   FDLLCacheHandle := nil;
-  FDLLSync := MakeSyncRW_Big(Self);
+  FDLLSync := GSync.SyncBig.Make(Self.ClassName);
   FTileNotExistsTileInfo := TTileInfoBasicNotExists.Create(0, nil);
-  FNotifierInternal := TNotifierBase.Create;
+  FNotifierInternal := TNotifierBase.Create(GSync.SyncVariable.Make(Self.ClassName + 'Notifier'));
   FNotifier := FNotifierInternal;
   InternalLib_CleanupProc;
   InternalLib_SetPath(PAnsiChar(FStoragePath));
@@ -145,18 +140,20 @@ end;
 
 destructor TTileStorageDLLTerrain.Destroy;
 begin
-  FDLLSync.BeginWrite;
-  try
-    FReadAccess := asDisabled;
-    InternalLib_Unload;
-  finally
-    FDLLSync.EndWrite;
+  if Assigned(FDLLSync) then begin
+    FDLLSync.BeginWrite;
+    try
+      FReadAccess := asDisabled;
+      InternalLib_Unload;
+    finally
+      FDLLSync.EndWrite;
+    end;
   end;
   FTileNotExistsTileInfo := nil;
   FDLLSync := nil;
   FNotifier := nil;
   FNotifierInternal := nil;
-  inherited Destroy;
+  inherited;
 end;
 
 function TTileStorageDLLTerrain.GetAvailable: Boolean;
@@ -217,6 +214,9 @@ var
 begin
   Result := FALSE;
   try
+    if not DirectoryExists(APath) then begin
+      Exit;
+    end;
     if (0 = FDLLHandle) then begin
       InternalLib_Initialize;
     end;
@@ -264,7 +264,7 @@ end;
 
 function TTileStorageDLLTerrain.SetPath(const APath: string): Boolean;
 begin
-  Result := InternalLib_SetPath(PAnsiChar(APath));
+  Result := InternalLib_SetPath(PAnsiChar(IncludeTrailingPathDelimiter(APath)));
 end;
 
 function TTileStorageDLLTerrain.GetTileInfo(
@@ -307,16 +307,6 @@ begin
   finally
     FDLLSync.EndRead;
   end;
-end;
-
-{ TTileStorageGETerrain }
-
-function TTileStorageGETerrain.InternalLib_Initialize: Boolean;
-begin
-  if (0 = FDLLHandle) then begin
-    FDLLHandle := LoadLibrary('TileStorage_GE.dll');
-  end;
-  Result := inherited InternalLib_Initialize;
 end;
 
 { TTileStorageGCTerrain }

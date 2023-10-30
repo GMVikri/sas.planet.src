@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GlobalBerkeleyDBHelper;
@@ -26,11 +26,14 @@ uses
   Windows,
   Classes,
   SyncObjs,
+  SysUtils,
   libdb51,
   i_Listener,
   i_PathConfig,
+  i_InterfaceListSimple,
   i_GlobalBerkeleyDBHelper,
   i_BerkeleyDBEnv,
+  i_TileStorageBerkeleyDBConfigStatic,
   u_BaseInterfacedObject;
 
 type
@@ -38,69 +41,92 @@ type
   private
     FSaveErrorsToLog: Boolean;
     FLogFileStream: TFileStream;
-    FDebugLogPath: string;
+    FFullBaseCachePath: string;
     FCacheConfigChangeListener: IListener;
-    FPathConfig: IPathConfig;
-    FEnvList: IInterfaceList;
+    FBaseCachePath: IPathConfig;
+    FEnvList: IInterfaceListSimple;
     FEnvCS: TCriticalSection;
     FLogCS: TCriticalSection;
+    FFormatSettings: TFormatSettings;
     function GetFullPathName(const ARelativePathName: string): string;
-    procedure SaveErrorToLog(const AMsg: AnsiString);
+    procedure SaveErrorToLog(const AMsg: string);
     procedure OnCacheConfigChange;
   private
     { IGlobalBerkeleyDBHelper }
-    function AllocateEnvironment(const AEnvRootPath: string): IBerkeleyDBEnvironment;
+    function AllocateEnvironment(
+      const AIsReadOnly: Boolean;
+      const AStorageConfig: ITileStorageBerkeleyDBConfigStatic;
+      const AStorageEPSG: Integer;
+      const AEnvRootPath: string
+    ): IBerkeleyDBEnvironment;
     procedure FreeEnvironment(const AEnv: IBerkeleyDBEnvironment);
-    procedure RaiseException(const EMsg: AnsiString);
-    procedure LogException(const EMsg: AnsiString);
+    procedure LogException(const EMsg: string);
   public
-    constructor Create(const APathConfig: IPathConfig);
+    constructor Create(const ABaseCachePath: IPathConfig);
     destructor Destroy; override;
   end;
+
+procedure TryShowLastExceptionData;
 
 implementation
 
 uses
-  SysUtils,
+  {$IFDEF EUREKALOG}
+  ExceptionLog,
+  {$ENDIF}
   ShLwApi,
+  u_InterfaceListSimple,
   u_ListenerByEvent,
   u_BerkeleyDBEnv;
 
+procedure TryShowLastExceptionData;
+begin
+  {$IFDEF EUREKALOG}
+  ShowLastExceptionData;
+  {$ENDIF}
+end;
+
 { TGlobalBerkeleyDBHelper }
 
-constructor TGlobalBerkeleyDBHelper.Create(const APathConfig: IPathConfig);
+constructor TGlobalBerkeleyDBHelper.Create(const ABaseCachePath: IPathConfig);
 begin
+  Assert(ABaseCachePath <> nil);
   inherited Create;
-  FPathConfig := APathConfig;
-  FEnvList := TInterfaceList.Create;
+  FBaseCachePath := ABaseCachePath;
+  FEnvList := TInterfaceListSimple.Create;
   FEnvCS := TCriticalSection.Create;
   FLogCS := TCriticalSection.Create;
   FLogFileStream := nil;
-  FSaveErrorsToLog := {$IFDEF DEBUG} True {$ELSE} False {$ENDIF};
-  FDebugLogPath := FPathConfig.FullPath;
+  FFormatSettings.DateSeparator := '-';
+  FFormatSettings.TimeSeparator := ':';
+  FFormatSettings.DecimalSeparator := '.';
+  FSaveErrorsToLog :=True;
+  FFullBaseCachePath := FBaseCachePath.FullPath;
   FCacheConfigChangeListener := TNotifyNoMmgEventListener.Create(Self.OnCacheConfigChange);
-  FPathConfig.ChangeNotifier.Add(FCacheConfigChangeListener);
+  Assert(FBaseCachePath.ChangeNotifier <> nil);
+  FBaseCachePath.ChangeNotifier.Add(FCacheConfigChangeListener);
 end;
 
 destructor TGlobalBerkeleyDBHelper.Destroy;
 begin
-  if FPathConfig <> nil then begin
-    FPathConfig.ChangeNotifier.Remove(FCacheConfigChangeListener);
-    FPathConfig := nil;
+  if (FBaseCachePath <> nil) and (FCacheConfigChangeListener <> nil) then begin
+    FBaseCachePath.ChangeNotifier.Remove(FCacheConfigChangeListener);
+    FBaseCachePath := nil;
     FCacheConfigChangeListener := nil;
   end;
   FEnvList := nil;
-  FEnvCS.Free;
+  FreeAndNil(FEnvCS);
   FreeAndNil(FLogFileStream);
-  FLogCS.Free;
-  inherited Destroy;
+  FreeAndNil(FLogCS);
+  inherited;
 end;
 
 procedure TGlobalBerkeleyDBHelper.OnCacheConfigChange;
 begin
   FLogCS.Acquire;
   try
-    FDebugLogPath := FPathConfig.FullPath;
+    FFullBaseCachePath := FBaseCachePath.FullPath;
+    FreeAndNil(FLogFileStream);
   finally
     FLogCS.Release;
   end;
@@ -109,12 +135,15 @@ end;
 function TGlobalBerkeleyDBHelper.GetFullPathName(const ARelativePathName: string): string;
 begin
   SetLength(Result, MAX_PATH);
-  PathCombine(@Result[1], PChar(ExtractFilePath(ParamStr(0))), PChar(ARelativePathName));
-  SetLength(Result, StrLen(PChar(Result)));
+  PathCombine(@Result[1], PChar(ExtractFilePath(FFullBaseCachePath)), PChar(ARelativePathName));
+  SetLength(Result, LStrLen(PChar(Result)));
   Result := LowerCase(IncludeTrailingPathDelimiter(Result));
 end;
 
 function TGlobalBerkeleyDBHelper.AllocateEnvironment(
+  const AIsReadOnly: Boolean;
+  const AStorageConfig: ITileStorageBerkeleyDBConfigStatic;
+  const AStorageEPSG: Integer;
   const AEnvRootPath: string
 ): IBerkeleyDBEnvironment;
 var
@@ -122,6 +151,7 @@ var
   VPath: string;
   VEnv: IBerkeleyDBEnvironment;
 begin
+  Assert(AStorageConfig <> nil);
   Result := nil;
   FEnvCS.Acquire;
   try
@@ -130,13 +160,20 @@ begin
       VEnv := FEnvList.Items[I] as IBerkeleyDBEnvironment;
       if Assigned(VEnv) then begin
         if VEnv.RootPath = VPath then begin
+          VEnv.ClientsCount := VEnv.ClientsCount + 1;
           Result := VEnv;
           Break;
         end;
       end;
     end;
     if not Assigned(Result) then begin
-      VEnv := TBerkeleyDBEnv.Create(Self, VPath);
+      VEnv := TBerkeleyDBEnv.Create(
+        (Self as IGlobalBerkeleyDBHelper),
+        AIsReadOnly,
+        AStorageConfig,
+        AStorageEPSG,
+        VPath
+      );
       FEnvList.Add(VEnv);
       Result := VEnv;
     end;
@@ -171,16 +208,15 @@ begin
   end;
 end;
 
-procedure TGlobalBerkeleyDBHelper.SaveErrorToLog(const AMsg: AnsiString);
+procedure TGlobalBerkeleyDBHelper.SaveErrorToLog(const AMsg: string);
 var
-  VLogMsg: AnsiString;
+  VLogMsg: string;
   VLogFileName: string;
-  VDateTimeStr: string;
 begin
   FLogCS.Acquire;
   try
     if not Assigned(FLogFileStream) then begin
-      VLogFileName := IncludeTrailingPathDelimiter(FDebugLogPath) + 'sdb.log';
+      VLogFileName := IncludeTrailingPathDelimiter(FFullBaseCachePath) + 'sdb.log';
       if not FileExists(VLogFileName) then begin
         FLogFileStream := TFileStream.Create(VLogFileName, fmCreate);
         FLogFileStream.Free;
@@ -188,23 +224,16 @@ begin
       FLogFileStream := TFileStream.Create(VLogFileName, fmOpenReadWrite or fmShareDenyNone);
     end;
 
-    DateTimeToString(VDateTimeStr, 'dd-mm-yyyy hh:nn:ss.zzzz', Now);
-    VLogMsg := AnsiString(VDateTimeStr) + #09 + AMsg + #13#10;
+    VLogMsg := FormatDateTime('dd-mm-yyyy hh:nn:ss.zzzz', Now, FFormatSettings) + #09 + AMsg + #13#10;
 
     FLogFileStream.Position := FLogFileStream.Size;
-    FLogFileStream.Write(VLogMsg[1], Length(VLogMsg));
+    FLogFileStream.Write(PChar(VLogMsg)^, Length(VLogMsg) * SizeOf(Char));
   finally
     FLogCS.Release;
   end;
 end;
 
-procedure TGlobalBerkeleyDBHelper.RaiseException(const EMsg: AnsiString);
-begin
-  LogException(EMsg);
-  raise EBerkeleyDBExeption.Create(string(EMsg));
-end;
-
-procedure TGlobalBerkeleyDBHelper.LogException(const EMsg: AnsiString);
+procedure TGlobalBerkeleyDBHelper.LogException(const EMsg: string);
 begin
   if FSaveErrorsToLog then
   try

@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MapSvcScanStorage;
 
 interface
@@ -45,6 +65,17 @@ type
       const AIdentifier: WideString;
       const AFetchedDate: TDateTime
     ): Boolean;
+    function GetScanDate(
+      const AVersionId: WideString
+    ): string;
+    function AddImageDate(
+      const AVersionId: WideString;
+      const ADate: string;
+      const AX: Double;
+      const AY: Double;
+      const AZoom: Byte
+    ): Boolean;
+
   public
     constructor Create(
       const AMapSvcScanConfig: IMapSvcScanConfig
@@ -55,6 +86,7 @@ type
 implementation
 
 uses
+  ALString,
   ALSqlite3Wrapper,
   u_ListenerByEvent,
   u_Synchronizer;
@@ -85,10 +117,10 @@ begin
   // insert one row
   try
     FDbHandler.ExecSQLWithTEXTW(
-      'INSERT OR IGNORE INTO svcitem (id,itemname,itemdate) VALUES ('+IntToStr(VId)+',?,'+IntToStr(DateTimeToDBSeconds(AFetchedDate))+')',
+      'INSERT OR IGNORE INTO svcitem (id,itemname,itemdate) VALUES ('+ALIntToStr(VId) + ',?,' + ALIntToStr(DateTimeToDBSeconds(AFetchedDate)) + ')',
       TRUE,
       PWideChar(AIdentifier),
-      Length(AIdentifier)      
+      Length(AIdentifier)
     );
     Result := TRUE;
   except
@@ -116,7 +148,7 @@ constructor TMapSvcScanStorage.Create(
 begin
   inherited Create;
   FMapSvcScanConfig := AMapSvcScanConfig;
-  FSync := MakeSyncRW_Std(Self);
+  FSync := GSync.SyncStd.Make(Self.ClassName);
 
   FServices := TStringList.Create;
   FServices.Sorted := TRUE;
@@ -142,20 +174,22 @@ end;
 
 destructor TMapSvcScanStorage.Destroy;
 begin
-  if (FConfigChangeListener<>nil) then begin
+  if Assigned(FMapSvcScanConfig) and Assigned(FConfigChangeListener) then begin
     FMapSvcScanConfig.ChangeNotifier.Remove(FConfigChangeListener);
     FConfigChangeListener := nil;
   end;
 
   FInitialized := FALSE;
-  FSync.BeginWrite;
-  try
-    FDbHandler.Close;
-    FreeAndNil(FServices);
-  finally
-    FSync.EndWrite;
+  if Assigned(FSync) then begin
+    FSync.BeginWrite;
+    try
+      FDbHandler.Close;
+      FreeAndNil(FServices);
+    finally
+      FSync.EndWrite;
+    end;
   end;
-  inherited Destroy;
+  inherited;
 end;
 
 function TMapSvcScanStorage.GetServiceId(const AServiceName: String): Integer;
@@ -194,7 +228,7 @@ begin
   FSync.BeginWrite;
   try
     VServiceName := AServiceName;
-    
+
     // select from database
     Result := _SelectId;
 
@@ -216,6 +250,64 @@ begin
     end;
   finally
     FSync.EndWrite;
+  end;
+end;
+
+function TMapSvcScanStorage.GetScanDate(
+  const AVersionId: WideString
+): string;
+var
+  VDBSeconds: Integer;
+begin
+  Result := '';
+  if  (AVersionId <> '') or (not Available) then begin
+    try
+      VDBSeconds := 0;
+      FDbHandler.OpenSQLWithTEXTW(
+        'SELECT date FROM scandate WHERE imageid=?',
+        CallbackReadSingleInt,
+        @VDBSeconds,
+        True,
+        TRUE,
+        PWideChar(AVersionId),
+        Length(AVersionId)
+      );
+      if (VDBSeconds <> 0) then begin
+        Result := DateTimeToStr(DBSecondsToDateTime(VDBSeconds));
+      end;
+    except
+    end;
+  end;
+end;
+
+function TMapSvcScanStorage.AddImageDate(
+      const AVersionId: WideString;
+      const ADate: string;
+      const AX: Double;
+      const AY: Double;
+      const AZoom: Byte
+    ): Boolean;
+var
+  VDBSeconds: Integer;
+  VdateTime : TDateTime;
+begin
+  Result := FALSE;
+  if GetScanDate(AVersionId) <> '' then Exit;
+
+  VdateTime := EncodeDate(StrToInt(Copy(ADate,1,4)), StrToInt(Copy(ADate,6,2)), StrToInt((Copy(ADate,9,2))));
+  VDBSeconds := DateTimeToDBSeconds(VdateTime);
+
+  // insert one row
+  try
+    FDbHandler.ExecSQLWithTEXTW(
+      'INSERT OR IGNORE INTO scandate (imageid, date, x, y, z) VALUES (?,' + ALIntToStr(VDBSeconds)+','+ FloatToStr(AX)+','+FloatToStr(AY)+','+ALIntToStr(AZoom)+')',
+      TRUE,
+      PWideChar(AVersionId),
+      Length(AVersionId)
+    );
+    Result := TRUE;
+  except
+    Result := FALSE;
   end;
 end;
 
@@ -241,13 +333,13 @@ begin
   try
     VDBSeconds := 0;
     FDbHandler.OpenSQLWithTEXTW(
-      'SELECT itemdate FROM svcitem WHERE id='+IntToStr(VId)+' AND itemname=?',
+      'SELECT itemdate FROM svcitem WHERE id='+ALIntToStr(VId) + ' AND itemname=?',
       CallbackReadSingleInt,
       @VDBSeconds,
       TRUE,
       TRUE,
       PWideChar(AIdentifier),
-      Length(AIdentifier)      
+      Length(AIdentifier)
     );
     Result := (VDBSeconds<>0);
     if Result then begin
@@ -296,11 +388,19 @@ begin
         FDbHandler.ExecSQL('create table IF NOT EXISTS svcinfo (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, svcname NVARCHAR NOT NULL)');
         FDbHandler.ExecSQL('create unique index IF NOT EXISTS svcinfo_uniq on svcinfo (svcname)');
         FDbHandler.ExecSQL('create table IF NOT EXISTS svcitem (id INTEGER NOT NULL CONSTRAINT svcinfo_fk REFERENCES svcinfo (id) ON DELETE CASCADE, itemname NVARCHAR NOT NULL, itemdate INT NOT NULL, constraint PK_SVCITEM primary key (id, itemname))');
+        FDbHandler.ExecSQL('create table IF NOT EXISTS scandate (imageid NVARCHAR NOT NULL, date int NOT NULL, x INT NOT NULL, y INT NOT NULL, z INT NOT NULL)');
       end;
       // apply config
       FDbHandler.ExecSQL('PRAGMA main.journal_mode=PERSIST'); // DELETE by default // WAL // PERSIST
       FDbHandler.ExecSQL('PRAGMA synchronous=NORMAL'); // FULL by default
       FDbHandler.ExecSQL('PRAGMA foreign_keys=ON'); // OFF by default
+
+      if GetScanDate('*') <> '' then begin
+        FDbHandler.Open(VPath, (SQLITE_OPEN_READWRITE or SQLITE_OPEN_CREATE));
+        FDbHandler.ExecSQL('create table IF NOT EXISTS scandate (imageid NVARCHAR NOT NULL, date int NOT NULL, x INT NOT NULL, y INT NOT NULL, z INT NOT NULL)');
+      end;
+
+
     except
       FDbHandler.Close;
     end;

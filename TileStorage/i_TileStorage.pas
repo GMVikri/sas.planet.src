@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit i_TileStorage;
@@ -29,6 +29,9 @@ uses
   i_NotifierTilePyramidUpdate,
   i_ContentTypeInfo,
   i_MapVersionInfo,
+  i_MapVersionRequest,
+  i_MapVersionListStatic,
+  i_TileStorageAbilities,
   i_StorageState,
   i_TileInfoBasic;
 
@@ -40,16 +43,14 @@ type
     function GetTileNotifier: INotifierTilePyramidUpdate;
     property TileNotifier: INotifierTilePyramidUpdate read GetTileNotifier;
 
+    function GetStorageTypeAbilities: ITileStorageTypeAbilities;
+    property StorageTypeAbilities: ITileStorageTypeAbilities read GetStorageTypeAbilities;
+
     function GetState: IStorageStateChangeble;
     property State: IStorageStateChangeble read GetState;
 
     function GetCoordConverter: ICoordConverter;
     property CoordConverter: ICoordConverter read GetCoordConverter;
-
-    function GetIsFileCache: Boolean;
-    property IsFileCache: Boolean read GetIsFileCache;
-
-    function GetIsCanSaveMultiVersionTiles: Boolean;
 
     function GetTileFileName(
       const AXY: TPoint;
@@ -64,38 +65,41 @@ type
       const AMode: TGetTileInfoMode
     ): ITileInfoBasic;
 
+    function GetTileInfoEx(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersionInfo: IMapVersionRequest;
+      const AMode: TGetTileInfoMode
+    ): ITileInfoBasic;
+
     function DeleteTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersion: IMapVersionInfo
     ): Boolean;
 
-    procedure SaveTile(
+    // For save tne AContentType = nil or AData = nil
+    // returns True if ok, False if exists and AIsOverwrite = false
+    function SaveTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersion: IMapVersionInfo;
       const ALoadDate: TDateTime;
       const AContentType: IContentTypeInfoBasic;
-      const AData: IBinaryData
-    );
-
-    procedure SaveTNE(
-      const AXY: TPoint;
-      const AZoom: byte;
-      const AVersion: IMapVersionInfo;
-      const ALoadDate: TDateTime
-    );
+      const AData: IBinaryData;
+      const AIsOverwrite: Boolean
+    ): Boolean;
 
     function GetListOfTileVersions(
       const AXY: TPoint;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): IMapVersionListStatic;
 
     function GetTileRectInfo(
       const ARect: TRect;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): ITileRectInfo;
 
     function ScanTiles(

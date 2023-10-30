@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_TileProviderByStorage;
 
 interface
@@ -7,14 +27,14 @@ uses
   SysUtils,
   i_NotifierTilePyramidUpdate,
   i_Bitmap32Static,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_MapVersionConfig,
   i_BitmapTileSaveLoad,
   i_VectorItemSubset,
   i_ProjectionInfo,
   i_TileProvider,
   i_VectorDataLoader,
-  i_ImageResamplerConfig,
+  i_ImageResamplerFactoryChangeable,
   i_VectorDataFactory,
   i_TileStorage,
   u_BaseInterfacedObject;
@@ -25,10 +45,10 @@ type
     FProjectionInfo: IProjectionInfo;
     FVersionConfig: IMapVersionConfig;
     FLoaderFromStorage: IBitmapTileLoader;
-    FBitmapFactory: IBitmap32StaticFactory;
+    FBitmapFactory: IBitmap32BufferFactory;
     FStorage: ITileStorage;
     FIsIgnoreError: Boolean;
-    FImageResamplerConfig: IImageResamplerConfig;
+    FImageResampler: IImageResamplerFactoryChangeable;
   private
     function GetProjectionInfo: IProjectionInfo;
     function GetTile(const ATile: TPoint): IBitmap32Static;
@@ -36,8 +56,8 @@ type
   public
     constructor Create(
       const AIsIgnoreError: Boolean;
-      const AImageResamplerConfig: IImageResamplerConfig;
-      const ABitmapFactory: IBitmap32StaticFactory;
+      const AImageResampler: IImageResamplerFactoryChangeable;
+      const ABitmapFactory: IBitmap32BufferFactory;
       const AVersionConfig: IMapVersionConfig;
       const ALoaderFromStorage: IBitmapTileLoader;
       const AProjectionInfo: IProjectionInfo;
@@ -51,7 +71,7 @@ type
     FVersionConfig: IMapVersionConfig;
     FLoaderFromStorage: IVectorDataLoader;
     FStorage: ITileStorage;
-    FVectorDataFactory: IVectorDataFactory;
+    FVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory;
     FIsIgnoreError: Boolean;
   private
     function GetProjectionInfo: IProjectionInfo;
@@ -60,7 +80,7 @@ type
   public
     constructor Create(
       const AIsIgnoreError: Boolean;
-      const AVectorDataFactory: IVectorDataFactory;
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory;
       const AVersionConfig: IMapVersionConfig;
       const ALoaderFromStorage: IVectorDataLoader;
       const AProjectionInfo: IProjectionInfo;
@@ -80,15 +100,15 @@ uses
 
 constructor TBitmapTileProviderByStorage.Create(
   const AIsIgnoreError: Boolean;
-  const AImageResamplerConfig: IImageResamplerConfig;
-  const ABitmapFactory: IBitmap32StaticFactory;
+  const AImageResampler: IImageResamplerFactoryChangeable;
+  const ABitmapFactory: IBitmap32BufferFactory;
   const AVersionConfig: IMapVersionConfig;
   const ALoaderFromStorage: IBitmapTileLoader;
   const AProjectionInfo: IProjectionInfo;
   const AStorage: ITileStorage
 );
 begin
-  Assert(AImageResamplerConfig <> nil);
+  Assert(AImageResampler <> nil);
   Assert(AVersionConfig <> nil);
   Assert(ALoaderFromStorage <> nil);
   Assert(AStorage <> nil);
@@ -96,7 +116,7 @@ begin
   Assert(AStorage.CoordConverter.IsSameConverter(AProjectionInfo.GeoConverter));
   inherited Create;
   FIsIgnoreError := AIsIgnoreError;
-  FImageResamplerConfig := AImageResamplerConfig;
+  FImageResampler := AImageResampler;
   FStorage := AStorage;
   FBitmapFactory := ABitmapFactory;
   FProjectionInfo := AProjectionInfo;
@@ -134,7 +154,7 @@ begin
       VSize := Types.Point(VRect.Right - VRect.Left, VRect.Bottom - VRect.Top);
       if (Result.Size.X <> VSize.X) or
         (Result.Size.Y <> VSize.Y) then begin
-        VResampler := FImageResamplerConfig.GetActiveFactory.CreateResampler;
+        VResampler := FImageResampler.GetStatic.CreateResampler;
         try
           VBitmap := TBitmap32ByStaticBitmap.Create(FBitmapFactory);
           try
@@ -146,7 +166,7 @@ begin
               VResampler,
               dmOpaque
             );
-            Result := VBitmap.BitmapStatic;
+            Result := VBitmap.MakeAndClear;
           finally
             VBitmap.Free;
           end;
@@ -168,13 +188,13 @@ end;
 
 constructor TVectorTileProviderByStorage.Create(
   const AIsIgnoreError: Boolean;
-  const AVectorDataFactory: IVectorDataFactory;
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory;
   const AVersionConfig: IMapVersionConfig;
   const ALoaderFromStorage: IVectorDataLoader;
   const AProjectionInfo: IProjectionInfo;
   const AStorage: ITileStorage);
 begin
-  Assert(AVectorDataFactory <> nil);
+  Assert(AVectorDataItemMainInfoFactory <> nil);
   Assert(AVersionConfig <> nil);
   Assert(ALoaderFromStorage <> nil);
   Assert(AStorage <> nil);
@@ -182,7 +202,7 @@ begin
   Assert(AStorage.CoordConverter.IsSameConverter(AProjectionInfo.GeoConverter));
   inherited Create;
   FIsIgnoreError := AIsIgnoreError;
-  FVectorDataFactory := AVectorDataFactory;
+  FVectorDataItemMainInfoFactory := AVectorDataItemMainInfoFactory;
   FStorage := AStorage;
   FProjectionInfo := AProjectionInfo;
   FVersionConfig := AVersionConfig;
@@ -208,7 +228,7 @@ begin
   try
     VZoom := FProjectionInfo.Zoom;
     if Supports(FStorage.GetTileInfo(ATile, VZoom, FVersionConfig.Version, gtimWithData), ITileInfoWithData, VTileInfo) then begin
-      Result := FLoaderFromStorage.Load(VTileInfo.TileData, nil, FVectorDataFactory);
+      Result := FLoaderFromStorage.Load(VTileInfo.TileData, nil, FVectorDataItemMainInfoFactory);
     end;
   except
     if not FIsIgnoreError then begin

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_KmzInfoSimpleParser;
@@ -27,9 +27,7 @@ uses
   i_BinaryData,
   i_VectorDataFactory,
   i_VectorItemSubset,
-  i_VectorItemsFactory,
   i_ArchiveReadWriteFactory,
-  i_InternalPerformanceCounter,
   i_VectorDataLoader,
   u_BaseInterfacedObject;
 
@@ -37,25 +35,22 @@ type
   TKmzInfoSimpleParser = class(TBaseInterfacedObject, IVectorDataLoader)
   private
     FKmlParser: IVectorDataLoader;
-    FLoadKmzStreamCounter: IInternalPerformanceCounter;
-    FLoadKmzCounter: IInternalPerformanceCounter;
     FArchiveReadWriteFactory: IArchiveReadWriteFactory;
     function LoadFromStreamInternal(
       AStream: TStream;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): IVectorItemSubset;
   private
     function Load(
       const AData: IBinaryData;
       const AIdData: Pointer;
-      const AFactory: IVectorDataFactory
+      const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
     ): IVectorItemSubset;
   public
     constructor Create(
       const AKmlParser: IVectorDataLoader;
-      const AArchiveReadWriteFactory: IArchiveReadWriteFactory;
-      const APerfCounterList: IInternalPerformanceCounterList
+      const AArchiveReadWriteFactory: IArchiveReadWriteFactory
     );
   end;
 
@@ -64,54 +59,41 @@ implementation
 uses
   SysUtils,
   i_ArchiveReadWrite,
-  u_KmlInfoSimpleParser,
   u_StreamReadOnlyByBinaryData;
 
 { TKmzInfoSimpleParser }
 
 constructor TKmzInfoSimpleParser.Create(
   const AKmlParser: IVectorDataLoader;
-  const AArchiveReadWriteFactory: IArchiveReadWriteFactory;
-  const APerfCounterList: IInternalPerformanceCounterList
+  const AArchiveReadWriteFactory: IArchiveReadWriteFactory
 );
-var
-  VPerfCounterList: IInternalPerformanceCounterList;
 begin
   inherited Create;
   FKmlParser := AKmlParser;
-  VPerfCounterList := APerfCounterList.CreateAndAddNewSubList('KmzLoader');
-  FLoadKmzCounter := VPerfCounterList.CreateAndAddNewCounter('LoadKmz');
-  FLoadKmzStreamCounter := VPerfCounterList.CreateAndAddNewCounter('LoadZip');
   FArchiveReadWriteFactory := AArchiveReadWriteFactory;
 end;
 
 function TKmzInfoSimpleParser.Load(
   const AData: IBinaryData;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): IVectorItemSubset;
 var
-  VCounterContext: TInternalPerformanceCounterContext;
   VStream: TStreamReadOnlyByBinaryData;
 begin
   Result := nil;
-  VCounterContext := FLoadKmzStreamCounter.StartOperation;
+  VStream := TStreamReadOnlyByBinaryData.Create(AData);
   try
-    VStream := TStreamReadOnlyByBinaryData.Create(AData);
-    try
-      Result := LoadFromStreamInternal(VStream, AIdData, AFactory);
-    finally
-      VStream.Free;
-    end;
+    Result := LoadFromStreamInternal(VStream, AIdData, AVectorDataItemMainInfoFactory);
   finally
-    FLoadKmzStreamCounter.FinishOperation(VCounterContext);
+    VStream.Free;
   end;
 end;
 
 function TKmzInfoSimpleParser.LoadFromStreamInternal(
   AStream: TStream;
   const AIdData: Pointer;
-  const AFactory: IVectorDataFactory
+  const AVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory
 ): IVectorItemSubset;
 var
   VZip: IArchiveReader;
@@ -120,7 +102,6 @@ var
   VIndex: Integer;
   I: Integer;
   VFileName: string;
-  VCounterContext: TInternalPerformanceCounterContext;
 begin
   VZip := FArchiveReadWriteFactory.CreateZipReaderByStream(AStream);
   VItemsCount := VZip.GetItemsCount;
@@ -137,12 +118,7 @@ begin
       VData := VZip.GetItemByIndex(VIndex, VFileName);
     end;
 
-    VCounterContext := FLoadKmzCounter.StartOperation;
-    try
-      Result := FKmlParser.Load(VData, AIdData, AFactory);
-    finally
-      FLoadKmzCounter.FinishOperation(VCounterContext);
-    end;
+    Result := FKmlParser.Load(VData, AIdData, AVectorDataItemMainInfoFactory);
   end;
 end;
 

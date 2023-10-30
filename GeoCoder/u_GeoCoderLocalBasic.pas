@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GeoCoderLocalBasic;
@@ -23,101 +23,103 @@ unit u_GeoCoderLocalBasic;
 interface
 
 uses
-  Classes,
+  i_InterfaceListSimple,
   i_NotifierOperation,
   i_GeoCoder,
   i_LocalCoordConverter,
+  i_VectorItemSubset,
+  i_VectorItemSubsetBuilder,
   u_BaseInterfacedObject;
 
 type
   TGeoCoderLocalBasic = class(TBaseInterfacedObject, IGeoCoder)
+  private
+    FPlacemarkFactory: IGeoCodePlacemarkFactory;
+    FVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+    function BuildSortedSubset(
+      const AList:IInterfaceListSimple;
+      const ALocalConverter: ILocalCoordConverter
+    ): IVectorItemSubset;
   protected
     function DoSearch(
       const ACancelNotifier: INotifierOperation;
       AOperationID: Integer;
       const ASearch: WideString;
       const ALocalConverter: ILocalCoordConverter
-    ): IInterfaceList; virtual; abstract;
+    ): IInterfaceListSimple; virtual; abstract;
+    property PlacemarkFactory: IGeoCodePlacemarkFactory read FPlacemarkFactory;
   private
     function GetLocations(
       const ACancelNotifier: INotifierOperation;
       AOperationID: Integer;
-      const ASearch: WideString;
+      const ASearch: string;
       const ALocalConverter: ILocalCoordConverter
-    ): IGeoCodeResult; safecall;
+    ): IGeoCodeResult;
+  public
+    constructor Create(
+      const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+      const APlacemarkFactory: IGeoCodePlacemarkFactory
+    );
   end;
+
 implementation
 
 uses
+  i_VectorDataItemSimple,
+  u_SortFunc,
   u_GeoCodeResult;
 
 { TGeoCoderLocalBasic }
 
-procedure QuickSort(
-  var AList:IInterfaceList;
-  var ADist: array of Double;
-    L, R: Integer
-  );
-  var
-    I, J: Integer;
-    P: Double;
-    TD: Double;
-
-  begin
-    repeat
-      I := L;
-      J := R;
-      P := ADist[(L + R) shr 1];
-      repeat
-        while ADist[I] < P do begin
-          Inc(I);
-        end;
-        while ADist[J] > P do begin
-          Dec(J);
-        end;
-        if I <= J then begin
-          TD := ADist[I];
-
-          ADist[I] := ADist[J];
-          ADist[J] := TD;
-          AList.Exchange(I,J);
-          Inc(I);
-          Dec(J);
-        end;
-      until I > J;
-      if L < J then begin
-        QuickSort(AList, ADist, L, J);
-      end;
-      L := I;
-    until I >= R;
+constructor TGeoCoderLocalBasic.Create(
+  const AVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+  const APlacemarkFactory: IGeoCodePlacemarkFactory
+);
+begin
+  inherited Create;
+  FVectorItemSubsetBuilderFactory := AVectorItemSubsetBuilderFactory;
+  FPlacemarkFactory := APlacemarkFactory;
 end;
 
-procedure SortIt(
-  var AList:IInterfaceList;
+function TGeoCoderLocalBasic.BuildSortedSubset(
+  const AList: IInterfaceListSimple;
   const ALocalConverter: ILocalCoordConverter
-    );
+): IVectorItemSubset;
 var
   i: integer;
-  VMark: IGeoCodePlacemark;
+  VMark: IVectorDataItem;
   VDistArr: array of Double;
+  VSubsetBuilder: IVectorItemSubsetBuilder;
 begin
-   setlength(VDistArr,AList.Count);
-   for i := 0 to AList.GetCount-1 do begin
-      VMark := IGeoCodePlacemark(AList.Items[i]);
-      VDistArr[i]:=ALocalConverter.GetGeoConverter.Datum.CalcDist(ALocalConverter.GetCenterLonLat,VMark.GetPoint);
-   end;
-  QuickSort(AList,VDistArr,0,AList.GetCount-1);
+  Result := nil;
+  if Assigned(AList) then begin
+    if AList.Count > 1 then begin
+      SetLength(VDistArr, AList.Count);
+      for i := 0 to AList.GetCount - 1 do begin
+        VMark := IVectorDataItem(AList.Items[i]);
+        VDistArr[i] := ALocalConverter.GetGeoConverter.Datum.CalcDist(ALocalConverter.GetCenterLonLat, VMark.Geometry.Bounds.CalcRectCenter);
+      end;
+      SortInterfaceListByDoubleMeasure(AList, VDistArr);
+    end;
+    VSubsetBuilder := FVectorItemSubsetBuilderFactory.Build;
+    for i := 0 to AList.GetCount - 1 do begin
+      VMark := IVectorDataItem(AList.Items[i]);
+      VSubsetBuilder.Add(VMark);
+    end;
+    Result := VSubsetBuilder.MakeStaticAndClear;
+  end;
 end;
 
 function TGeoCoderLocalBasic.GetLocations(
   const ACancelNotifier: INotifierOperation;
   AOperationID: Integer;
-  const ASearch: WideString;
+  const ASearch: string;
   const ALocalConverter: ILocalCoordConverter
 ): IGeoCodeResult;
 var
-  VList: IInterfaceList;
+  VList: IInterfaceListSimple;
   VResultCode: Integer;
+  VSubset: IVectorItemSubset;
 begin
   VResultCode := 200;
   VList := nil;
@@ -126,19 +128,14 @@ begin
     Exit;
   end;
   VList :=
-   DoSearch(
-   ACancelNotifier,
-   AOperationID,
-   ASearch,
-   ALocalConverter
-   );
-  if VList = nil then begin
-    VList := TInterfaceList.Create;
-  end;
-
-  if VList.GetCount>1 then SortIt(VList ,ALocalConverter);
-
-  Result := TGeoCodeResult.Create(ASearch, VResultCode,'', VList);
+    DoSearch(
+      ACancelNotifier,
+      AOperationID,
+      ASearch,
+      ALocalConverter
+    );
+  VSubset := BuildSortedSubset(VList, ALocalConverter);
+  Result := TGeoCodeResult.Create(ASearch, VResultCode, '', VSubset);
 end;
 
 

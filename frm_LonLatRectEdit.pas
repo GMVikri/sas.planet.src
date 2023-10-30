@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_LonLatRectEdit;
@@ -45,6 +45,7 @@ type
     grpBottomRight: TGroupBox;
     pnlBottomButtons: TPanel;
     grdpnlMain: TGridPanel;
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure FormShow(Sender: TObject);
   private
     FfrLonLatTopLeft: TfrLonLat;
@@ -53,7 +54,7 @@ type
     constructor Create(
       const ALanguageManager: ILanguageManager;
       const AViewPortState: ILocalCoordConverterChangeable;
-      const AValueToStringConverterConfig: IValueToStringConverterConfig
+      const AValueToStringConverter: IValueToStringConverterChangeable
     ); reintroduce;
     destructor Destroy; override;
     function Execute(var ALonLatRect: TDoubleRect): Boolean;
@@ -69,7 +70,7 @@ uses
 constructor TfrmLonLatRectEdit.Create(
   const ALanguageManager: ILanguageManager;
   const AViewPortState: ILocalCoordConverterChangeable;
-  const AValueToStringConverterConfig: IValueToStringConverterConfig
+  const AValueToStringConverter: IValueToStringConverterChangeable
 );
 begin
   inherited Create(ALanguageManager);
@@ -77,14 +78,14 @@ begin
     TfrLonLat.Create(
       ALanguageManager,
       AViewPortState,
-      AValueToStringConverterConfig,
+      AValueToStringConverter,
       tssTopLeft
     );
   FfrLonLatBottomRight :=
     TfrLonLat.Create(
       ALanguageManager,
       AViewPortState,
-      AValueToStringConverterConfig,
+      AValueToStringConverter,
       tssBottomRight
     );
 end;
@@ -110,6 +111,17 @@ begin
     end else if (ALonLatRect.Top < ALonLatRect.Bottom)then begin
       ShowMessage(SAS_ERR_LonLat1);
       result:=false;
+    end;
+  end;
+end;
+
+procedure TfrmLonLatRectEdit.FormCloseQuery(Sender: TObject; var CanClose:
+    Boolean);
+begin
+  if ModalResult = mrOk then begin
+    CanClose := FfrLonLatTopLeft.Validate;
+    if CanClose then begin
+      CanClose := FfrLonLatBottomRight.Validate;
     end;
   end;
 end;

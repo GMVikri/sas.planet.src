@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageInfo;
@@ -25,38 +25,30 @@ interface
 uses
   i_CoordConverter,
   i_ContentTypeInfo,
-  i_StorageTypeAbilities,
+  i_TileStorageAbilities,
   i_TileStorageInfo,
   u_BaseInterfacedObject;
 
 type
   TTileStorageInfo = class(TBaseInterfacedObject, ITileStorageInfo)
   private
-    FTypeInfo: IStorageTypeAbilities;
+    FTypeAbilities: ITileStorageAbilities;
+    FForceAbilities: ITileStorageAbilities;
     FMainContentType: IContentTypeInfoBasic;
     FAllowDifferentContentTypes: Boolean;
-
-    FAllowDelete: boolean;
-    FAllowSave: boolean;
-    FIsReadOnly: boolean;
     FCoordConverter: ICoordConverter;
   private
-    function GetTypeInfo: IStorageTypeAbilities;
+    function GetTypeAbilities: ITileStorageAbilities;
+    function GetForceAbilities: ITileStorageAbilities;
     function GetMainContentType: IContentTypeInfoBasic;
     function GetAllowDifferentContentTypes: Boolean;
-
-    function GetAllowDelete: boolean;
-    function GetAllowSave: boolean;
-    function GetIsReadOnly: boolean;
     function GetCoordConverter: ICoordConverter;
   public
     constructor Create(
-      const ATypeInfo: IStorageTypeAbilities;
+      const ATypeAbilities: ITileStorageAbilities;
+      const AForceAbilities: ITileStorageAbilities;
       const AMainContentType: IContentTypeInfoBasic;
       AAllowDifferentContentTypes: Boolean;
-      AAllowDelete: boolean;
-      AAllowSave: boolean;
-      AIsReadOnly: boolean;
       const ACoordConverter: ICoordConverter
     );
   end;
@@ -66,25 +58,19 @@ implementation
 { TTileStorageInfo }
 
 constructor TTileStorageInfo.Create(
-  const ATypeInfo: IStorageTypeAbilities;
+  const ATypeAbilities: ITileStorageAbilities;
+  const AForceAbilities: ITileStorageAbilities;
   const AMainContentType: IContentTypeInfoBasic;
-  AAllowDifferentContentTypes, AAllowDelete, AAllowSave, AIsReadOnly: boolean;
+  AAllowDifferentContentTypes: Boolean;
   const ACoordConverter: ICoordConverter
 );
 begin
   inherited Create;
-  FTypeInfo := ATypeInfo;
+  FTypeAbilities := ATypeAbilities;
+  FForceAbilities := AForceAbilities;
   FCoordConverter := ACoordConverter;
   FMainContentType := AMainContentType;
   FAllowDifferentContentTypes := AAllowDifferentContentTypes;
-  FAllowDelete := AAllowDelete;
-  FAllowSave := AAllowSave;
-  FIsReadOnly := AIsReadOnly;
-end;
-
-function TTileStorageInfo.GetAllowDelete: boolean;
-begin
-  Result := FAllowDelete;
 end;
 
 function TTileStorageInfo.GetAllowDifferentContentTypes: Boolean;
@@ -92,19 +78,14 @@ begin
   Result := FAllowDifferentContentTypes;
 end;
 
-function TTileStorageInfo.GetAllowSave: boolean;
-begin
-  Result := FAllowSave;
-end;
-
 function TTileStorageInfo.GetCoordConverter: ICoordConverter;
 begin
   Result := FCoordConverter;
 end;
 
-function TTileStorageInfo.GetIsReadOnly: boolean;
+function TTileStorageInfo.GetForceAbilities: ITileStorageAbilities;
 begin
-  Result := FIsReadOnly;
+  Result := FForceAbilities;
 end;
 
 function TTileStorageInfo.GetMainContentType: IContentTypeInfoBasic;
@@ -112,9 +93,9 @@ begin
   Result := FMainContentType;
 end;
 
-function TTileStorageInfo.GetTypeInfo: IStorageTypeAbilities;
+function TTileStorageInfo.GetTypeAbilities: ITileStorageAbilities;
 begin
-  Result := FTypeInfo;
+  Result := FTypeAbilities;
 end;
 
 end.

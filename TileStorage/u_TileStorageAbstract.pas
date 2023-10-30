@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TileStorageAbstract;
@@ -27,9 +27,11 @@ uses
   i_BinaryData,
   i_CoordConverter,
   i_MapVersionInfo,
-  i_MapVersionConfig,
+  i_MapVersionFactory,
+  i_MapVersionRequest,
+  i_MapVersionListStatic,
   i_ContentTypeInfo,
-  i_StorageTypeAbilities,
+  i_TileStorageAbilities,
   i_StorageState,
   i_StorageStateInternal,
   i_TileInfoBasic,
@@ -40,6 +42,7 @@ uses
 type
   TTileStorageAbstract = class(TBaseInterfacedObject, ITileStorage)
   private
+    FStorageTypeAbilities: ITileStorageTypeAbilities;
     FGeoConverter: ICoordConverter;
     FMapVersionFactory: IMapVersionFactory;
     FTileNotifier: INotifierTilePyramidUpdate;
@@ -58,11 +61,10 @@ type
     property GeoConverter: ICoordConverter read FGeoConverter;
     property MapVersionFactory: IMapVersionFactory read FMapVersionFactory;
   protected
+    function GetStorageTypeAbilities: ITileStorageTypeAbilities;
     function GetTileNotifier: INotifierTilePyramidUpdate;
     function GetState: IStorageStateChangeble;
     function GetCoordConverter: ICoordConverter;
-    function GetIsFileCache: Boolean; virtual; abstract;
-    function GetIsCanSaveMultiVersionTiles: Boolean; virtual;
 
     function GetTileFileName(
       const AXY: TPoint;
@@ -75,35 +77,36 @@ type
       const AVersionInfo: IMapVersionInfo;
       const AMode: TGetTileInfoMode
     ): ITileInfoBasic; virtual; abstract;
+    function GetTileInfoEx(
+      const AXY: TPoint;
+      const AZoom: byte;
+      const AVersionInfo: IMapVersionRequest;
+      const AMode: TGetTileInfoMode
+    ): ITileInfoBasic; virtual; abstract;
     function GetTileRectInfo(
       const ARect: TRect;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): ITileRectInfo; virtual; abstract;
     function DeleteTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersionInfo: IMapVersionInfo
     ): Boolean; virtual; abstract;
-    procedure SaveTile(
+    function SaveTile(
       const AXY: TPoint;
       const AZoom: byte;
       const AVersionInfo: IMapVersionInfo;
       const ALoadDate: TDateTime;
       const AContentType: IContentTypeInfoBasic;
-      const AData: IBinaryData
-    ); virtual; abstract;
-    procedure SaveTNE(
-      const AXY: TPoint;
-      const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo;
-      const ALoadDate: TDateTime
-    ); virtual; abstract;
+      const AData: IBinaryData;
+      const AIsOverwrite: Boolean
+    ): Boolean; virtual; abstract;
 
     function GetListOfTileVersions(
       const AXY: TPoint;
       const AZoom: byte;
-      const AVersionInfo: IMapVersionInfo
+      const AVersionInfo: IMapVersionRequest
     ): IMapVersionListStatic; virtual;
 
     function ScanTiles(
@@ -112,7 +115,8 @@ type
     ): IEnumTileInfo; virtual;
   public
     constructor Create(
-      const AStorageTypeAbilities: IStorageTypeAbilities;
+      const AStorageTypeAbilities: ITileStorageTypeAbilities;
+      const AStorageForceAbilities: ITileStorageAbilities;
       const AMapVersionFactory: IMapVersionFactory;
       const AGeoConverter: ICoordConverter;
       const AStoragePath: string
@@ -128,7 +132,8 @@ uses
 { TTileStorageAbstract }
 
 constructor TTileStorageAbstract.Create(
-  const AStorageTypeAbilities: IStorageTypeAbilities;
+  const AStorageTypeAbilities: ITileStorageTypeAbilities;
+  const AStorageForceAbilities: ITileStorageAbilities;
   const AMapVersionFactory: IMapVersionFactory;
   const AGeoConverter: ICoordConverter;
   const AStoragePath: string
@@ -138,22 +143,18 @@ var
   VState: TStorageStateInternal;
 begin
   inherited Create;
+  FStorageTypeAbilities := AStorageTypeAbilities;
   FMapVersionFactory := AMapVersionFactory;
   FStoragePath := AStoragePath;
   FGeoConverter := AGeoConverter;
 
-  VState := TStorageStateInternal.Create(AStorageTypeAbilities);
+  VState := TStorageStateInternal.Create(AStorageForceAbilities);
   FStorageStateInternal := VState;
   FStorageState := VState;
 
   VNotifier := TNotifierTilePyramidUpdate.Create(AGeoConverter);
   FTileNotifier := VNotifier;
   FTileNotifierInternal := VNotifier;
-end;
-
-function TTileStorageAbstract.GetIsCanSaveMultiVersionTiles: Boolean;
-begin
-  Result := False;
 end;
 
 function TTileStorageAbstract.GetCoordConverter: ICoordConverter;
@@ -164,7 +165,7 @@ end;
 function TTileStorageAbstract.GetListOfTileVersions(
   const AXY: TPoint;
   const AZoom: byte;
-  const AVersionInfo: IMapVersionInfo
+  const AVersionInfo: IMapVersionRequest
 ): IMapVersionListStatic;
 begin
   Result := nil;
@@ -178,6 +179,11 @@ end;
 function TTileStorageAbstract.GetState: IStorageStateChangeble;
 begin
   Result := FStorageState;
+end;
+
+function TTileStorageAbstract.GetStorageTypeAbilities: ITileStorageTypeAbilities;
+begin
+  Result := FStorageTypeAbilities;
 end;
 
 procedure TTileStorageAbstract.NotifyTileUpdate(

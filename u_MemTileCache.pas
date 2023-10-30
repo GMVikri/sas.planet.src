@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MemTileCache;
@@ -165,7 +165,7 @@ begin
   end;
   FCacheList := TStringList.Create;
   FCacheList.Capacity := FConfig.MaxSize;
-  FSync := MakeSyncRW_Big(Self, False);
+  FSync := GSync.SyncBig.Make(Self.ClassName);
   FTTLListener := TListenerTTLCheck.Create(Self.OnTTLTrim, 40000);
   FGCNotifier.Add(FTTLListener);
 
@@ -180,15 +180,19 @@ destructor TMemTileCacheBase.Destroy;
 var
   VNotifier: INotifierTilePyramidUpdate;
 begin
-  FConfig.GetChangeNotifier.Remove(FConfigListener);
-  FConfigListener := nil;
-  FConfig := nil;
+  if Assigned(FConfig) and Assigned(FConfigListener) then begin
+    FConfig.GetChangeNotifier.Remove(FConfigListener);
+    FConfigListener := nil;
+    FConfig := nil;
+  end;
 
-  FGCNotifier.Remove(FTTLListener);
-  FTTLListener := nil;
-  FGCNotifier := nil;
+  if Assigned(FGCNotifier) and Assigned(FTTLListener) then begin
+    FGCNotifier.Remove(FTTLListener);
+    FTTLListener := nil;
+    FGCNotifier := nil;
+  end;
 
-  if FTileStorage <> nil then begin
+  if Assigned(FTileStorage) and Assigned(FStorageChangeListener) then begin
     VNotifier := FTileStorage.TileNotifier;
     if VNotifier <> nil then begin
       VNotifier.Remove(FStorageChangeListener);

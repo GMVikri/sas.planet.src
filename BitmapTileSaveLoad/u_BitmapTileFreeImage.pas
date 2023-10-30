@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_BitmapTileFreeImage;
@@ -26,7 +26,8 @@ uses
   FreeImage,
   i_BinaryData,
   i_Bitmap32Static,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
+  i_Bitmap32To8Converter,
   i_BitmapTileSaveLoad,
   i_InternalPerformanceCounter,
   u_BaseInterfacedObject;
@@ -35,13 +36,13 @@ type
   TBitmapTileFreeImageLoader = class (TBaseInterfacedObject, IBitmapTileLoader)
   private
     FCounter: IInternalPerformanceCounter;
-    FBitmapFactory: IBitmap32StaticFactory;
+    FBitmapFactory: IBitmap32BufferFactory;
   private
     function Load(const AData: IBinaryData): IBitmap32Static;
   public
     constructor Create(
       const APerfCounterList: IInternalPerformanceCounterList;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
   end;
 
@@ -49,7 +50,7 @@ type
   public
     constructor Create(
       const APerfCounterList: IInternalPerformanceCounterList;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
   end;
 
@@ -57,7 +58,7 @@ type
   public
     constructor Create(
       const APerfCounterList: IInternalPerformanceCounterList;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
   end;
 
@@ -65,7 +66,7 @@ type
   public
     constructor Create(
       const APerfCounterList: IInternalPerformanceCounterList;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
   end;
 
@@ -73,7 +74,7 @@ type
   public
     constructor Create(
       const APerfCounterList: IInternalPerformanceCounterList;
-      const ABitmapFactory: IBitmap32StaticFactory
+      const ABitmapFactory: IBitmap32BufferFactory
     );
   end;
 
@@ -82,6 +83,7 @@ type
     FFormat: FREE_IMAGE_FORMAT;
     FBitPerPixel: Byte;
     FFlag: Integer;
+    FBitmap32To8Converter: IBitmap32To8Converter;
     FCounter: IInternalPerformanceCounter;
   private
     function Save(const ABitmap: IBitmap32Static): IBinaryData;
@@ -90,9 +92,9 @@ type
       const AFormat: FREE_IMAGE_FORMAT;
       const APngCompress: Byte;
       const ABitPerPixel: Byte;
+      const ABitmap32To8Converter: IBitmap32To8Converter;
       const APerfCounterList: IInternalPerformanceCounterList
     );
-    destructor Destroy; override;
   end;
 
   TBitmapTileFreeImageSaverBmp = class(TBitmapTileFreeImageSaver)
@@ -105,6 +107,7 @@ type
   TBitmapTileFreeImageSaverGif = class(TBitmapTileFreeImageSaver)
   public
     constructor Create(
+      const ABitmap32To8Converter: IBitmap32To8Converter;
       const APerfCounterList: IInternalPerformanceCounterList
     );
   end;
@@ -114,6 +117,7 @@ type
     constructor Create(
       const APngCompress: Byte;
       const ABitPerPixel: Integer;
+      const ABitmap32To8Converter: IBitmap32To8Converter;
       const APerfCounterList: IInternalPerformanceCounterList
     );
   end;
@@ -125,8 +129,9 @@ uses
   Types,
   Classes,
   SysUtils,
-  GR32,
   FreeBitmap,
+  t_Bitmap32,
+  i_Bitmap8Static,
   u_BinaryDataByMemStream;
 
 type
@@ -140,7 +145,7 @@ const
 
 constructor TBitmapTileFreeImageLoader.Create(
   const APerfCounterList: IInternalPerformanceCounterList;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create;
@@ -212,7 +217,7 @@ end;
 
 constructor TBitmapTileFreeImageLoaderBmp.Create(
   const APerfCounterList: IInternalPerformanceCounterList;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create(
@@ -225,7 +230,7 @@ end;
 
 constructor TBitmapTileFreeImageLoaderIco.Create(
   const APerfCounterList: IInternalPerformanceCounterList;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create(
@@ -238,7 +243,7 @@ end;
 
 constructor TBitmapTileFreeImageLoaderGif.Create(
   const APerfCounterList: IInternalPerformanceCounterList;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create(
@@ -251,7 +256,7 @@ end;
 
 constructor TBitmapTileFreeImageLoaderPng.Create(
   const APerfCounterList: IInternalPerformanceCounterList;
-  const ABitmapFactory: IBitmap32StaticFactory
+  const ABitmapFactory: IBitmap32BufferFactory
 );
 begin
   inherited Create(
@@ -266,12 +271,14 @@ constructor TBitmapTileFreeImageSaver.Create(
   const AFormat: FREE_IMAGE_FORMAT;
   const APngCompress: Byte;
   const ABitPerPixel: Byte;
+  const ABitmap32To8Converter: IBitmap32To8Converter;
   const APerfCounterList: IInternalPerformanceCounterList
 );
 begin
   inherited Create;
   FFormat := AFormat;
   FBitPerPixel := ABitPerPixel;
+  FBitmap32To8Converter := ABitmap32To8Converter;
   FCounter := APerfCounterList.CreateAndAddNewCounter('Save');
   case FFormat of
     FIF_PNG:
@@ -290,12 +297,6 @@ begin
   end;
 end;
 
-destructor TBitmapTileFreeImageSaver.Destroy;
-begin
-  FCounter := nil;
-  inherited Destroy;
-end;
-
 function TBitmapTileFreeImageSaver.Save(
   const ABitmap: IBitmap32Static
 ): IBinaryData;
@@ -307,86 +308,119 @@ var
   VCounterContext: TInternalPerformanceCounterContext;
   VPalette: PRGBQUAD;
   VPaletteSize: Integer;
-  VTransparencyTable: array [0..255] of Byte;
   VSize: TPoint;
+  VData: PByte;
+  VBitmap8: IBitmap8Static;
+  VBkColor: RGBQUAD;
+  VTransparencyTable: array [0..255] of Byte;
 begin
   VCounterContext := FCounter.StartOperation;
   try
     VSize := ABitmap.Size;
-    VFreeBitmap := TFreeWinBitmap.Create(
-      FIT_BITMAP,
-      VSize.X,
-      VSize.Y,
-      32
-    );
-    try
-      VScanLineSize := VFreeBitmap.GetScanWidth;
 
-      Assert(VScanLineSize = VSize.X * 4);
+    // PNG with palette, GIF
+    if FBitPerPixel = 8 then begin
+      Assert(FBitmap32To8Converter <> nil);
+      VBitmap8 := FBitmap32To8Converter.Convert(ABitmap);
+      if Assigned(VBitmap8) then begin
+        VFreeBitmap := TFreeWinBitmap.Create(FIT_BITMAP, VSize.X, VSize.Y, 8);
+        try
+          VScanLineSize := VFreeBitmap.GetScanWidth;
+          Assert(VScanLineSize >= VSize.X);
+          VScanLineSize := VSize.X;
+          VData := VBitmap8.Data;
+          for I := 0 to VSize.Y - 1 do begin
+            Move(
+              VData^,
+              VFreeBitmap.GetScanLine(VSize.Y - 1 - I)^,
+              VScanLineSize
+            );
+            Inc(VData, VScanLineSize);
+          end;
 
-      for I := 0 to VSize.Y - 1 do begin
-        Move(
-          ABitmap.Data[I * VSize.X],
-          VFreeBitmap.GetScanLine(VSize.Y - 1 - I)^,
-          VScanLineSize
-        );
-      end;
+          VPalette := VFreeBitmap.GetPalette;
+          VPaletteSize := VFreeBitmap.GetPaletteSize div SizeOf(PRGBQUAD);
 
-      if FBitPerPixel = 8 then begin // PNG with palette, GIF
-        if VFreeBitmap.ConvertTo24Bits then begin
-          if VFreeBitmap.ColorQuantize(FIQ_WUQUANT) then begin
-            // Restore transparent background 
-            VPalette := VFreeBitmap.GetPalette;
-            VPaletteSize := VFreeBitmap.GetPaletteSize div SizeOf(PRGBQUAD);
-            if (VPalette <> nil) and (VPaletteSize <= 256) then begin
-              for I := 0 to VPaletteSize - 1 do begin
-                if (VPalette.rgbGreen >= $FE) and
-                   (VPalette.rgbBlue = $00) and
-                   (VPalette.rgbRed = $00) then
-                begin
-                  VTransparencyTable[I] := $00;
-                end else begin
-                  VTransparencyTable[I] := $FF;
-                end;
-                Inc(VPalette);
-              end;
-              VFreeBitmap.SetTransparencyTable(
-                @VTransparencyTable[0],
-                VPaletteSize
+          Assert(VPaletteSize = 256);
+
+          if not VFreeBitmap.GetFileBkColor(VBkColor) then begin
+            VBkColor.rgbBlue  := 0;
+            VBkColor.rgbGreen := 0;
+            VBkColor.rgbRed   := 0;
+            VBkColor.rgbReserved := 0;
+          end;
+
+          for I := 0 to VBitmap8.PaletteSize - 1 do begin
+            Move(VBitmap8.Palette[I], VPalette^, 4);
+
+            if (VPalette.rgbBlue = VBkColor.rgbBlue) and
+               (VPalette.rgbGreen = VBkColor.rgbGreen) and
+               (VPalette.rgbRed = VBkColor.rgbRed)
+            then begin
+              VTransparencyTable[I] := VBkColor.rgbReserved;
+            end else begin
+              VTransparencyTable[I] := VPalette.rgbReserved;
+            end;
+
+            Inc(VPalette);
+          end;
+
+          VFreeBitmap.SetTransparencyTable(
+            @VTransparencyTable[0],
+            VBitmap8.PaletteSize
+          );
+
+          VMemStream := TMemoryStream.Create;
+          try
+            if not VFreeBitmap.SaveToStream(FFormat, VMemStream, FFlag) then begin
+              raise EBitmapTileFreeImageSaver.Create(
+                'FreeBitmap.SaveToStream FAIL!'
               );
             end;
-          end else begin
+            Result := TBinaryDataByMemStream.CreateWithOwn(VMemStream);
+            VMemStream := nil;
+          finally
+            VMemStream.Free;
+          end;
+        finally
+          VFreeBitmap.Free;
+        end;
+      end;
+    end else begin
+      VFreeBitmap := TFreeWinBitmap.Create(FIT_BITMAP, VSize.X, VSize.Y, 32);
+      try
+        VScanLineSize := VFreeBitmap.GetScanWidth;
+        Assert(VScanLineSize = VSize.X * 4);
+        for I := 0 to VSize.Y - 1 do begin
+          Move(
+            ABitmap.Data[I * VSize.X],
+            VFreeBitmap.GetScanLine(VSize.Y - 1 - I)^,
+            VScanLineSize
+          );
+        end;
+        if FBitPerPixel = 24 then begin // PNG without alfa
+          if not VFreeBitmap.ConvertTo24Bits then begin
             raise EBitmapTileFreeImageSaver.Create(
-              'FreeBitmap.ColorQuantize FAIL!'
+              'FreeBitmap.ConvertTo24Bits FAIL!'
             );
           end;
-        end else begin
-          raise EBitmapTileFreeImageSaver.Create(
-            'Palette FreeBitmap.ConvertTo24Bits FAIL!'
-          );
         end;
-      end else if FBitPerPixel = 24 then begin // PNG without alfa
-        if not VFreeBitmap.ConvertTo24Bits then begin
-          raise EBitmapTileFreeImageSaver.Create(
-            'FreeBitmap.ConvertTo24Bits FAIL!'
-          );
-        end;
-      end;
 
-      VMemStream := TMemoryStream.Create;
-      try
-        if not VFreeBitmap.SaveToStream(FFormat, VMemStream, FFlag) then begin
-          raise EBitmapTileFreeImageSaver.Create(
-            'FreeBitmap.SaveToStream FAIL!'
-          );
+        VMemStream := TMemoryStream.Create;
+        try
+          if not VFreeBitmap.SaveToStream(FFormat, VMemStream, FFlag) then begin
+            raise EBitmapTileFreeImageSaver.Create(
+              'FreeBitmap.SaveToStream FAIL!'
+            );
+          end;
+          Result := TBinaryDataByMemStream.CreateWithOwn(VMemStream);
+          VMemStream := nil;
+        finally
+          VMemStream.Free;
         end;
-        Result := TBinaryDataByMemStream.CreateWithOwn(VMemStream);
-        VMemStream := nil;
       finally
-        VMemStream.Free;
+        VFreeBitmap.Free;
       end;
-    finally
-      VFreeBitmap.Free;
     end;
   finally
     FCounter.FinishOperation(VCounterContext);
@@ -403,6 +437,7 @@ begin
     FIF_BMP,
     cPngCompressLevelUndef,
     32,
+    nil,
     APerfCounterList.CreateAndAddNewSubList('FreeImage/Bmp')
   );
 end;
@@ -410,6 +445,7 @@ end;
 { TBitmapTileFreeImageSaverGif }
 
 constructor TBitmapTileFreeImageSaverGif.Create(
+  const ABitmap32To8Converter: IBitmap32To8Converter;
   const APerfCounterList: IInternalPerformanceCounterList
 );
 begin
@@ -417,6 +453,7 @@ begin
     FIF_GIF,
     cPngCompressLevelUndef,
     8,
+    ABitmap32To8Converter,
     APerfCounterList.CreateAndAddNewSubList('FreeImage/Gif')
   );
 end;
@@ -426,6 +463,7 @@ end;
 constructor TBitmapTileFreeImageSaverPng.Create(
   const APngCompress: Byte;
   const ABitPerPixel: Integer;
+  const ABitmap32To8Converter: IBitmap32To8Converter;
   const APerfCounterList: IInternalPerformanceCounterList
 );
 begin
@@ -433,6 +471,7 @@ begin
     FIF_PNG,
     APngCompress,
     ABitPerPixel,
+    ABitmap32To8Converter,
     APerfCounterList.CreateAndAddNewSubList('FreeImage/Png')
   );
 end;

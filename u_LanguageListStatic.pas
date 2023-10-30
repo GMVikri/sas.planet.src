@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_LanguageListStatic;
@@ -35,15 +35,13 @@ type
   private
     function GetCount: Integer;
 
-    function GetCode(AIndex: Integer): string;
+    function GetCode(const AIndex: Integer): string;
     function FindCode(
       const ACode: string;
       out AIndex: Integer
     ): Boolean;
   public
-    constructor Create(
-      AList: TStrings
-    );
+    constructor Create(const AList: TStrings);
     destructor Destroy; override;
   end;
 
@@ -54,7 +52,7 @@ uses
 
 { TLanguageListStatic }
 
-constructor TLanguageListStatic.Create(AList: TStrings);
+constructor TLanguageListStatic.Create(const AList: TStrings);
 var
   i: Integer;
   VCode: string;
@@ -86,9 +84,11 @@ function TLanguageListStatic.FindCode(
 ): Boolean;
 begin
   Result := FSortedByCode.Find(ACode, AIndex);
+  if Result then
+    AIndex := Integer(FSortedByCode.Objects[AIndex])
 end;
 
-function TLanguageListStatic.GetCode(AIndex: Integer): string;
+function TLanguageListStatic.GetCode(const AIndex: Integer): string;
 begin
   Result := FList.Strings[AIndex];
 end;

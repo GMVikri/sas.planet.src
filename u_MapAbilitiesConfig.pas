@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MapAbilitiesConfig;
@@ -48,8 +48,6 @@ type
     procedure DoReadConfig(const AConfigData: IConfigDataProvider); override;
     procedure DoWriteConfig(const AConfigData: IConfigDataWriteProvider); override;
   private
-    function GetIsLayer: Boolean;
-
     function GetIsShowOnSmMap: Boolean;
     procedure SetIsShowOnSmMap(AValue: Boolean);
 
@@ -91,10 +89,11 @@ end;
 
 destructor TMapAbilitiesConfig.Destroy;
 begin
-  FStorageConfig.GetChangeNotifier.Remove(FStorageConfigListener);
-  FStorageConfigListener := nil;
-  FStorageConfig := nil;
-
+  if Assigned(FStorageConfig) and Assigned(FStorageConfigListener) then begin
+    FStorageConfig.GetChangeNotifier.Remove(FStorageConfigListener);
+    FStorageConfigListener := nil;
+    FStorageConfig := nil;
+  end;
   inherited;
 end;
 
@@ -104,7 +103,6 @@ var
 begin
   VStatic :=
     TMapAbilitiesConfigStatic.Create(
-      FDefConfig.IsLayer,
       FIsShowOnSmMap,
       FUseDownload
     );
@@ -135,16 +133,6 @@ begin
     AConfigData.WriteBool('UseDwn', FUseDownload);
   end else begin
     AConfigData.DeleteValue('UseDwn');
-  end;
-end;
-
-function TMapAbilitiesConfig.GetIsLayer: Boolean;
-begin
-  LockRead;
-  try
-    Result := FDefConfig.IsLayer;
-  finally
-    UnlockRead;
   end;
 end;
 
@@ -204,7 +192,7 @@ begin
   VStorageConfig := FStorageConfig.GetStatic;
   LockWrite;
   try
-    VValue := FDefConfig.UseDownload and VStorageConfig.AllowAdd and AValue;
+    VValue := FDefConfig.UseDownload and VStorageConfig.Abilities.AllowAdd and AValue;
     if FUseDownload <> VValue then begin
       FUseDownload := VValue;
       SetChanged;

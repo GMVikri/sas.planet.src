@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MarksDrawConfigStatic;
@@ -24,27 +24,37 @@ interface
 
 uses
   Types,
+  t_Hash,
   i_MarksDrawConfig,
   u_BaseInterfacedObject;
 
 type
-  TMarksDrawConfigStatic = class(TBaseInterfacedObject, IMarksDrawConfigStatic)
+  TCaptionDrawConfigStatic = class(TBaseInterfacedObject, ICaptionDrawConfigStatic)
   private
     FShowPointCaption: Boolean;
     FUseSolidCaptionBackground: Boolean;
+  private
+    function GetHash: THashValue;
+    function GetShowPointCaption: Boolean;
+    function GetUseSolidCaptionBackground: Boolean;
+  public
+    constructor Create(
+      AShowPointCaption: Boolean;
+      AUseSolidCaptionBackground: Boolean
+    );
+  end;
+
+  TMarksDrawOrderConfigStatic = class(TBaseInterfacedObject, IMarksDrawOrderConfigStatic)
+  private
     FUseSimpleDrawOrder: Boolean;
     FOverSizeRect: TRect;
   private
-    function GetShowPointCaption: Boolean;
-    function GetUseSolidCaptionBackground: Boolean;
     function GetUseSimpleDrawOrder: Boolean;
     function GetOverSizeRect: TRect;
   public
     constructor Create(
-      AShowPointCaption: Boolean;
-      AUseSolidCaptionBackground: Boolean;
-      AUseSimpleDrawOrder: Boolean;
-      AOverSizeRect: TRect
+      const AUseSimpleDrawOrder: Boolean;
+      const AOverSizeRect: TRect
     );
   end;
 
@@ -52,36 +62,60 @@ implementation
 
 { TMarksDrawConfigStatic }
 
-constructor TMarksDrawConfigStatic.Create(
-  AShowPointCaption: Boolean;
-  AUseSolidCaptionBackground: Boolean;
-  AUseSimpleDrawOrder: Boolean;
-  AOverSizeRect: TRect
+constructor TMarksDrawOrderConfigStatic.Create(
+  const AUseSimpleDrawOrder: Boolean;
+  const AOverSizeRect: TRect
+);
+begin
+  inherited Create;
+  FUseSimpleDrawOrder := AUseSimpleDrawOrder;
+  FOverSizeRect := AOverSizeRect;
+end;
+
+function TMarksDrawOrderConfigStatic.GetOverSizeRect: TRect;
+begin
+  Result := FOverSizeRect;
+end;
+
+function TMarksDrawOrderConfigStatic.GetUseSimpleDrawOrder: Boolean;
+begin
+  Result := FUseSimpleDrawOrder;
+end;
+
+{ TCaptionDrawConfigStatic }
+
+constructor TCaptionDrawConfigStatic.Create(
+  AShowPointCaption,
+  AUseSolidCaptionBackground: Boolean
 );
 begin
   inherited Create;
   FShowPointCaption := AShowPointCaption;
   FUseSolidCaptionBackground := AUseSolidCaptionBackground;
-  FUseSimpleDrawOrder := AUseSimpleDrawOrder;
-  FOverSizeRect := AOverSizeRect;
 end;
 
-function TMarksDrawConfigStatic.GetOverSizeRect: TRect;
+function TCaptionDrawConfigStatic.GetHash: THashValue;
+var
+  VHash: THashValue;
 begin
-  Result := FOverSizeRect;
+  VHash := $162e192b2957163d;
+  if not FShowPointCaption then begin
+    VHash := not VHash;
+  end;
+  Result := VHash;
+  VHash := $f3786a4b25827c1;
+  if not FUseSolidCaptionBackground then begin
+    VHash := not VHash;
+  end;
+  Result := Result xor VHash;
 end;
 
-function TMarksDrawConfigStatic.GetShowPointCaption: Boolean;
+function TCaptionDrawConfigStatic.GetShowPointCaption: Boolean;
 begin
   Result := FShowPointCaption;
 end;
 
-function TMarksDrawConfigStatic.GetUseSimpleDrawOrder: Boolean;
-begin
-  Result := FUseSimpleDrawOrder;
-end;
-
-function TMarksDrawConfigStatic.GetUseSolidCaptionBackground: Boolean;
+function TCaptionDrawConfigStatic.GetUseSolidCaptionBackground: Boolean;
 begin
   Result := FUseSolidCaptionBackground;
 end;

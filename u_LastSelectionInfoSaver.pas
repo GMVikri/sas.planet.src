@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_LastSelectionInfoSaver;
 
 interface
@@ -8,7 +28,7 @@ uses
   i_Listener,
   i_PathConfig,
   i_SimpleFlag,
-  i_VectorItemsFactory,
+  i_GeometryLonLatFactory,
   i_LastSelectionInfo,
   u_BackgroundTask;
 
@@ -17,7 +37,7 @@ type
   private
     FLastSelection: ILastSelectionInfo;
     FFileName: IPathConfig;
-    FVectorItemsFactory: IVectorItemsFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
 
     FListener: IListener;
     FNeedReadFlag: ISimpleFlag;
@@ -30,7 +50,7 @@ type
   public
     constructor Create(
       const AAppClosingNotifier: INotifierOneOperation;
-      const AVectorItemsFactory: IVectorItemsFactory;
+      const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
       const ALastSelection: ILastSelectionInfo;
       const AFileName: IPathConfig
     );
@@ -44,7 +64,7 @@ uses
   SysUtils,
   IniFiles,
   i_ThreadConfig,
-  i_VectorItemLonLat,
+  i_GeometryLonLat,
   i_ConfigDataWriteProvider,
   i_EnumDoublePoint,
   u_ThreadConfig,
@@ -57,7 +77,7 @@ uses
 
 constructor TLastSelectionInfoSaver.Create(
   const AAppClosingNotifier: INotifierOneOperation;
-  const AVectorItemsFactory: IVectorItemsFactory;
+  const AVectorGeometryLonLatFactory: IGeometryLonLatFactory;
   const ALastSelection: ILastSelectionInfo;
   const AFileName: IPathConfig
 );
@@ -69,14 +89,14 @@ begin
   VThreadConfig := TThreadConfig.Create(tpIdle);
   inherited Create(AAppClosingNotifier, Self.ProcessSave, VThreadConfig, Self.ClassName);
 
-  FVectorItemsFactory := AVectorItemsFactory;
+  FVectorGeometryLonLatFactory := AVectorGeometryLonLatFactory;
   FLastSelection := ALastSelection;
   FFileName := AFileName;
 
 
   FNeedReadFlag := TSimpleFlagWithInterlock.Create;
   FNeedWriteFlag := TSimpleFlagWithInterlock.Create;
-  
+
   FListener := TNotifyNoMmgEventListener.Create(Self.OnNeedSave);
 
   FLastSelection.ChangeNotifier.Add(FListener);
@@ -88,15 +108,15 @@ end;
 
 destructor TLastSelectionInfoSaver.Destroy;
 begin
-  if FLastSelection <> nil then begin
+  if Assigned(FLastSelection) and Assigned(FListener) then begin
     FLastSelection.ChangeNotifier.Remove(FListener);
+    FLastSelection := nil;
   end;
-  FLastSelection := nil;
 
-  if FFileName <> nil then begin
+  if Assigned(FFileName) and Assigned(FListener) then begin
     FFileName.ChangeNotifier.Remove(FListener);
+    FFileName := nil;
   end;
-  FFileName := nil;
 
   FListener := nil;
   inherited;
@@ -104,7 +124,7 @@ end;
 
 procedure TLastSelectionInfoSaver.OnNeedSave;
 begin
-  Self.StartExecute;  
+  Self.StartExecute;
   FNeedWriteFlag.SetFlag;
 end;
 
@@ -114,7 +134,7 @@ var
   VFileName: string;
   VPath: string;
   VZoom: Byte;
-  VPolygon: ILonLatPolygon;
+  VPolygon: IGeometryLonLatPolygon;
   VNeedRead: Boolean;
   VNeedWrite: Boolean;
   VIniFile: TMemIniFile;
@@ -144,8 +164,8 @@ begin
           VIniFile.Free;
         end;
         VProvider := VProvider.GetOrCreateSubItem('HIGHLIGHTING');
-        VPolygon := ReadPolygon(VProvider, FVectorItemsFactory);
-        if VPolygon.Count > 0 then begin
+        VPolygon := ReadPolygon(VProvider, FVectorGeometryLonLatFactory);
+        if not VPolygon.IsEmpty then begin
           VZoom := VProvider.Readinteger('Zoom', VZoom);
         end;
       except
@@ -158,13 +178,8 @@ begin
     end;
   end;
   if VNeedWrite then begin
-    FLastSelection.LockRead;
-    try
-      VZoom := FLastSelection.Zoom;
-      VPolygon := FLastSelection.Polygon;
-    finally
-      FLastSelection.UnlockRead;
-    end;
+    VZoom := FLastSelection.Zoom;
+    VPolygon := FLastSelection.Polygon;
     if VPolygon = nil then begin
       Exit;
     end;

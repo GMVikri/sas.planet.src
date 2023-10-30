@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GlobalState;
@@ -34,7 +34,9 @@ uses
   i_MapVersionFactoryList,
   i_NotifierOperation,
   i_GPSPositionFactory,
+  i_HashFunction,
   i_Listener,
+  i_AppearanceOfMarkFactory,
   i_BackgroundTask,
   i_ConfigDataWriteProvider,
   i_ConfigDataProvider,
@@ -46,29 +48,36 @@ uses
   i_CoordConverterList,
   i_ProjConverter,
   i_BatteryStatus,
+  i_InternalBrowserLastContent,
   i_LocalCoordConverterFactorySimpe,
   i_GPSModule,
-  i_MainFormConfig,
+  i_GeometryProjectedProvider,
   i_DownloadInfoSimple,
   i_ImageResamplerConfig,
   i_GeoCoderList,
   i_MarkPicture,
+  i_LastSelectionInfo,
   i_InternalPerformanceCounter,
-  i_MarksSystem,
+  i_DebugInfoSubSystem,
+  i_MarkSystem,
   i_ZmpInfoSet,
   i_Datum,
+  i_GeoCalc,
   i_PathConfig,
   i_NotifierTime,
-  i_Bitmap32StaticFactory,
+  i_Bitmap32BufferFactory,
   i_VectorDataFactory,
+  i_GeometryProjectedFactory,
+  i_VectorItemSubsetBuilder,
+  i_GeoCoder,
+  i_MapTypeSetBuilder,
+  i_MapTypeListBuilder,
   i_MapCalibration,
-  i_ImportFile,
   i_PathDetalizeProviderList,
   i_GPSRecorder,
   i_SatellitesInViewMapDraw,
-  i_SensorList,
   i_TerrainProviderList,
-  i_VectorItemsFactory,
+  i_GeometryLonLatFactory,
   i_InvisibleBrowser,
   i_InternalBrowser,
   i_DebugInfoWindow,
@@ -80,13 +89,18 @@ uses
   i_SystemTimeProvider,
   i_MarkCategoryFactory,
   i_MarkFactory,
+  i_ValueToStringConverter,
+  i_VectorItemTreeImporterList,
+  i_VectorItemTreeExporterList,
+  i_TileStorageTypeList,
+  i_LastSearchResult,
+  i_ImageResamplerFactory,
+  i_BuildInfo,
   i_GlobalConfig,
   i_GlobalCacheConfig,
   u_GarbageCollectorThread,
   u_MapTypesMainList,
   u_IeEmbeddedProtocolRegistration;
-
-{$I vsagps_defines.inc}
 
 type
   TGlobalState = class
@@ -99,6 +113,12 @@ type
 
     FMainConfigProvider: IConfigDataWriteProvider;
     FZmpInfoSet: IZmpInfoSet;
+    FHashFunction: IHashFunction;
+    FAppearanceOfMarkFactory: IAppearanceOfMarkFactory;
+    FVectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory;
+    FGeoCodePlacemarkFactory: IGeoCodePlacemarkFactory;
+    FMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
+    FMapTypeListBuilderFactory: IMapTypeListBuilderFactory;
     FResourceProvider: IConfigDataProvider;
     FTileNameGenerator: ITileFileNameGeneratorsList;
     FTileNameParser: ITileFileNameParsersList;
@@ -106,7 +126,8 @@ type
     FContentTypeManager: IContentTypeManager;
     FMapCalibrationList: IMapCalibrationList;
     FCacheConfig: IGlobalCacheConfig;
-    FMarksDb: IMarksSystem;
+    FMarkSystem: IMarkSystem;
+    FDatumFactory: IDatumFactory;
     FCoordConverterFactory: ICoordConverterFactory;
     FCoordConverterList: ICoordConverterList;
     FProjConverterFactory: IProjConverterFactory;
@@ -114,16 +135,17 @@ type
     FLocalConverterFactory: ILocalCoordConverterFactorySimpe;
     FMainMapsList: TMapTypesMainList;
     FGPSPositionFactory: IGPSPositionFactory;
-    FMainFormConfig: IMainFormConfig;
     FBitmapPostProcessing: IBitmapPostProcessingChangeable;
     FDownloadInfo: IDownloadInfoSimple;
     FGlobalInternetState: IGlobalInternetState;
     FGlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper;
-    FGeoCoderList: IGeoCoderList;
+    FGeoCoderList: IGeoCoderListStatic;
     FMarkPictureList: IMarkPictureList;
     FGpsSystem: IGPSModule;
-    FImportFileByExt: IImportFile;
+    FImporterList: IVectorItemTreeImporterListChangeable;
+    FExporterList: IVectorItemTreeExporterListChangeable;
     FGPSDatum: IDatum;
+    FGeoCalc: IGeoCalc;
     FGPSRecorder: IGPSRecorder;
     FGPSRecorderInternal: IGPSRecorderInternal;
     FGpsTrackRecorder: IGpsTrackRecorder;
@@ -137,8 +159,7 @@ type
     FGUISyncronizedTimerNotifierInternal: INotifierTimeInternal;
     FGUISyncronizedTimerNotifier: INotifierTime;
     FGUISyncronizedTimerCounter: IInternalPerformanceCounter;
-    FSensorList: ISensorList;
-    FPerfCounterList: IInternalPerformanceCounterList;
+    FDebugInfoSubSystem: IDebugInfoSubSystem;
     FProtocol: TIeEmbeddedProtocolRegistration;
     FMapVersionFactoryList: IMapVersionFactoryList;
     FPathDetalizeList: IPathDetalizeProviderList;
@@ -149,8 +170,9 @@ type
     FAppStartedNotifierInternal: INotifierOneOperationInternal;
     FAppClosingNotifier: INotifierOneOperation;
     FAppClosingNotifierInternal: INotifierOneOperationInternal;
-    FVectorItemsFactory: IVectorItemsFactory;
-    FBitmapFactory: IBitmap32StaticFactory;
+    FVectorGeometryProjectedFactory: IGeometryProjectedFactory;
+    FVectorGeometryLonLatFactory: IGeometryLonLatFactory;
+    FBitmapFactory: IBitmap32BufferFactory;
     FBatteryStatus: IBatteryStatus;
     FTerrainProviderList: ITerrainProviderList;
     FBitmapTileSaveLoadFactory: IBitmapTileSaveLoadFactory;
@@ -158,13 +180,23 @@ type
     FLastSelectionSaver: IBackgroundTask;
     FMainThreadConfigListener: IListener;
     FVectorDataFactory: IVectorDataFactory;
+    FVectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory;
+    FProjectedGeometryProvider: IGeometryProjectedProvider;
     FMarkFactory: IMarkFactory;
     FMarkCategoryFactory: IMarkCategoryFactory;
+    FBuildInfo: IBuildInfo;
+    FInternalBrowserContent: IInternalBrowserLastContent;
+    FTileStorageTypeList: ITileStorageTypeListStatic;
+    FLastSelectionInfo: ILastSelectionInfo;
+    FImageResamplerFactoryList: IImageResamplerFactoryList;
+    FLastSearchResult: ILastSearchResult;
+    FValueToStringConverter: IValueToStringConverterChangeable;
 
     procedure OnMainThreadConfigChange;
     procedure InitProtocol;
 
     procedure OnGUISyncronizedTimer(Sender: TObject);
+    function GetPerfCounterList: IInternalPerformanceCounterList;
     {$IFDEF SasDebugWithJcl}
     procedure DoException(
       Sender: TObject;
@@ -176,50 +208,69 @@ type
 
     property MapType: TMapTypesMainList read FMainMapsList;
     property CacheConfig: IGlobalCacheConfig read FCacheConfig;
-    property MarksDb: IMarksSystem read FMarksDb;
+    property MarksDb: IMarkSystem read FMarkSystem;
     property GpsSystem: IGPSModule read FGpsSystem;
     property GPSDatum: IDatum read FGPSDatum;
+    property GeoCalc: IGeoCalc read FGeoCalc;
 
     // Список генераторов имен файлов с тайлами
     property TileNameGenerator: ITileFileNameGeneratorsList read FTileNameGenerator;
     property TileNameParser: ITileFileNameParsersList read FTileNameParser;
     property ContentTypeManager: IContentTypeManager read FContentTypeManager;
+    property DatumFactory: IDatumFactory read FDatumFactory;
     property CoordConverterFactory: ICoordConverterFactory read FCoordConverterFactory;
     property CoordConverterList: ICoordConverterList read FCoordConverterList;
     property ProjectionFactory: IProjectionInfoFactory read FProjectionFactory;
     property LocalConverterFactory: ILocalCoordConverterFactorySimpe read FLocalConverterFactory;
+    property MapTypeSetBuilderFactory: IMapTypeSetBuilderFactory read FMapTypeSetBuilderFactory;
+    property MapTypeListBuilderFactory: IMapTypeListBuilderFactory read FMapTypeListBuilderFactory;
     property MapCalibrationList: IMapCalibrationList read FMapCalibrationList;
     property AppStartedNotifier: INotifierOneOperation read FAppStartedNotifier;
     property AppClosingNotifier: INotifierOneOperation read FAppClosingNotifier;
 
+    property HashFunction: IHashFunction read FHashFunction;
+    property AppearanceOfMarkFactory: IAppearanceOfMarkFactory read FAppearanceOfMarkFactory;
     property MainConfigProvider: IConfigDataWriteProvider read FMainConfigProvider;
     property ResourceProvider: IConfigDataProvider read FResourceProvider;
     property DownloadInfo: IDownloadInfoSimple read FDownloadInfo;
     property GlobalInternetState: IGlobalInternetState read FGlobalInternetState;
-    property ImportFileByExt: IImportFile read FImportFileByExt;
+    property ImporterList: IVectorItemTreeImporterListChangeable read FImporterList;
+    property ExporterList: IVectorItemTreeExporterListChangeable read FExporterList;
     property SkyMapDraw: ISatellitesInViewMapDraw read FSkyMapDraw;
     property GUISyncronizedTimerNotifier: INotifierTime read FGUISyncronizedTimerNotifier;
     property BGTimerNotifier: INotifierTime read FBGTimerNotifier;
-    property PerfCounterList: IInternalPerformanceCounterList read FPerfCounterList;
+    property PerfCounterList: IInternalPerformanceCounterList read GetPerfCounterList;
     property SystemTime: ISystemTimeProvider read FSystemTime;
 
-    property MainFormConfig: IMainFormConfig read FMainFormConfig;
+    property LastSelectionInfo: ILastSelectionInfo read FLastSelectionInfo;
     property BitmapPostProcessing: IBitmapPostProcessingChangeable read FBitmapPostProcessing;
     property GPSRecorder: IGPSRecorder read FGPSRecorder;
     property GpsTrackRecorder: IGpsTrackRecorder read FGpsTrackRecorder;
     property PathDetalizeList: IPathDetalizeProviderList read FPathDetalizeList;
-    property SensorList: ISensorList read FSensorList;
     property InternalBrowser: IInternalBrowser read FInternalBrowser;
     property DebugInfoWindow: IDebugInfoWindow read FDebugInfoWindow;
-    property VectorItemsFactory: IVectorItemsFactory read FVectorItemsFactory;
-    property BitmapFactory: IBitmap32StaticFactory read FBitmapFactory;
+    property VectorGeometryLonLatFactory: IGeometryLonLatFactory read FVectorGeometryLonLatFactory;
+    property VectorGeometryProjectedFactory: IGeometryProjectedFactory read FVectorGeometryProjectedFactory;
+    property BitmapFactory: IBitmap32BufferFactory read FBitmapFactory;
     property VectorDataFactory: IVectorDataFactory read FVectorDataFactory;
+    property VectorDataItemMainInfoFactory: IVectorDataItemMainInfoFactory read FVectorDataItemMainInfoFactory;
+    property ProjectedGeometryProvider: IGeometryProjectedProvider read FProjectedGeometryProvider;
+    property VectorItemSubsetBuilderFactory: IVectorItemSubsetBuilderFactory read FVectorItemSubsetBuilderFactory;
     property BitmapTileSaveLoadFactory: IBitmapTileSaveLoadFactory read FBitmapTileSaveLoadFactory;
+    property GeoCodePlacemarkFactory: IGeoCodePlacemarkFactory read FGeoCodePlacemarkFactory;
     property ArchiveReadWriteFactory: IArchiveReadWriteFactory read FArchiveReadWriteFactory;
     property TerrainProviderList: ITerrainProviderList read FTerrainProviderList;
     property GlobalBerkeleyDBHelper: IGlobalBerkeleyDBHelper read FGlobalBerkeleyDBHelper;
     property MarkPictureList: IMarkPictureList read FMarkPictureList;
     property MapVersionFactoryList: IMapVersionFactoryList read FMapVersionFactoryList;
+    property BuildInfo: IBuildInfo read FBuildInfo;
+    property TileStorageTypeList: ITileStorageTypeListStatic read FTileStorageTypeList;
+    property ImageResamplerFactoryList: IImageResamplerFactoryList read FImageResamplerFactoryList;
+    property LastSearchResult: ILastSearchResult read FLastSearchResult;
+    property ValueToStringConverter: IValueToStringConverterChangeable read FValueToStringConverter;
+    property GeoCoderList: IGeoCoderListStatic read FGeoCoderList;
+    property DebugInfoSubSystem: IDebugInfoSubSystem read FDebugInfoSubSystem;
+    property BatteryStatus: IBatteryStatus read FBatteryStatus;
 
     constructor Create;
     destructor Destroy; override;
@@ -244,34 +295,37 @@ uses
   {$ENDIF}
   u_Notifier,
   u_NotifierOperation,
+  c_CoordConverter,
   c_InternalBrowser,
   u_SASMainConfigProvider,
   u_ConfigDataProviderByIniFile,
   u_ConfigDataWriteProviderByIniFile,
   u_ConfigDataProviderByPathConfig,
   i_InternalDomainInfoProvider,
-  i_ImageResamplerFactory,
   i_TextByVectorItem,
+  i_ImageResamplerFactoryChangeable,
+  u_MapTypeSet,
+  u_MapTypeListStatic,
+  i_InternalDebugConfig,
   u_TextByVectorItemHTMLByDescription,
-  u_TextByVectorItemMarkInfo,
   u_NotifierTime,
   i_FileNameIterator,
+  u_AppearanceOfMarkFactory,
   u_ContentTypeManagerSimple,
-  u_MarksSystem,
+  u_MarkSystem,
   u_MapCalibrationListBasic,
   u_XmlInfoSimpleParser,
-  u_KmzInfoSimpleParser,
-  u_KmlInfoSimpleParser,
   u_CoordConverterFactorySimple,
   u_CoordConverterListStaticSimple,
   u_DownloadInfoSimple,
-  u_Datum,
-  u_PLTSimpleParser,
+  u_DatumFactory,
+  u_GeoCalc,
+  u_HashFunctionCityHash,
+  u_HashFunctionWithCounter,
   u_MapVersionFactoryList,
   u_GeoCoderListSimple,
   u_MarkPictureListSimple,
   u_ImageResamplerFactoryListStaticSimple,
-  u_ImportByFileExt,
   u_GlobalBerkeleyDBHelper,
   u_GPSRecorder,
   u_GpsTrackRecorder,
@@ -279,27 +333,22 @@ uses
   u_GPSModuleFactoryByVSAGPS,
   u_GPSPositionFactory,
   u_ProjectionInfoFactory,
+  u_GeoCodePlacemark,
   u_LocalCoordConverterFactorySimpe,
   u_TerrainProviderList,
-  u_MainFormConfig,
   u_ProjConverterFactory,
   u_PathConfig,
   u_BatteryStatus,
   u_ZmpInfoSet,
   u_ZmpFileNamesIteratorFactory,
-  u_SensorListStuped,
   u_HtmlToHintTextConverterStuped,
   u_InvisibleBrowserByFormSynchronize,
   u_InternalBrowserByForm,
   u_DebugInfoWindow,
-  u_BaseInterfacedObject,
-  u_BaseInterfacedObjectDebug,
-  u_InternalPerformanceCounter,
-  u_InternalPerformanceCounterList,
-  u_InternalPerformanceCounterFake,
   u_IeEmbeddedProtocolFactory,
-  u_VectorItemsFactorySimple,
+  u_GeometryLonLatFactory,
   u_VectorDataFactorySimple,
+  u_GeometryProjectedFactory,
   u_DownloadResultFactory,
   u_PathDetalizeProviderListSimple,
   u_InternalDomainInfoProviderList,
@@ -308,8 +357,10 @@ uses
   u_InternalDomainInfoProviderByMarksSystem,
   u_InternalDomainInfoProviderByMapData,
   u_InternalDomainInfoProviderByLastSearchResults,
+  u_InternalDomainInfoProviderByLastContent,
   u_InternalDomainInfoProviderByTileStorageOptions,
-  u_Bitmap32StaticFactory,
+  u_Bitmap32BufferFactory,
+  u_VectorItemSubsetBuilder,
   u_GpsSystem,
   u_LastSelectionInfoSaver,
   u_ListenerByEvent,
@@ -317,12 +368,25 @@ uses
   u_GlobalConfig,
   u_GlobalInternetState,
   u_GlobalCacheConfig,
+  u_InternalDebugConfig,
   u_MarkFactory,
   u_MarkCategoryFactory,
+  u_GeometryProjectedProvider,
   u_SystemTimeProvider,
   u_BitmapTileSaveLoadFactory,
   u_ArchiveReadWriteFactory,
+  u_DebugInfoSubSystem,
+  u_LastSelectionInfo,
+  u_LocalCoordConverterFactory,
+  u_LastSearchResult,
+  u_ImageResamplerFactoryChangeableByConfig,
+  u_BuildInfo,
+  u_VectorItemTreeExporterListSimple,
+  u_VectorItemTreeImporterListSimple,
   u_BitmapPostProcessingChangeableByConfig,
+  u_ValueToStringConverter,
+  u_InternalBrowserLastContent,
+  u_TileStorageTypeListSimple,
   u_TileFileNameParsersSimpleList,
   u_TileFileNameGeneratorsSimpleList;
 
@@ -331,15 +395,19 @@ uses
 constructor TGlobalState.Create;
 var
   VViewCnonfig: IConfigDataProvider;
-  VMarksKmlLoadCounterList: IInternalPerformanceCounterList;
-  VXmlLoader: IVectorDataLoader;
   VKmlLoader: IVectorDataLoader;
-  VKmzLoader: IVectorDataLoader;
   VFilesIteratorFactory: IFileNameIteratorFactory;
   VFilesIterator: IFileNameIterator;
   VProgramPath: string;
   VSleepByClass: IConfigDataProvider;
   VResamplerFactoryList: IImageResamplerFactoryList;
+  VInternalDebugConfig: IInternalDebugConfig;
+  VTileLoadResampler: IImageResamplerFactoryChangeable;
+  VTileGetPrevResampler: IImageResamplerFactoryChangeable;
+  VTileReprojectResampler: IImageResamplerFactoryChangeable;
+  VTileDownloadResampler: IImageResamplerFactoryChangeable;
+  VNotifierSync: IReadWriteSync;
+  VOneOperationSync: IReadWriteSync;
 begin
   inherited Create;
   if ModuleIsLib then begin
@@ -355,32 +423,10 @@ begin
   FBaseDataPath := TPathConfig.Create('', VProgramPath, nil);
   FBaseCahcePath := TPathConfig.Create('', VProgramPath, nil);
 
-  FMapVersionFactoryList := TMapVersionFactoryList.Create;
+  FBuildInfo := TBuildInfo.Create;
 
-  FGlobalConfig :=
-    TGlobalConfig.Create(
-      FBaseCahcePath,
-      FBaseConfigPath,
-      FBaseDataPath,
-      FBaseApplicationPath
-    );
-  FBGTimerNotifierInternal := TNotifierTime.Create;
-  FBGTimerNotifier := FBGTimerNotifierInternal;
-  FBitmapFactory :=
-    TBitmap32StaticFactory.Create(
-      FBGTimerNotifier,
-      MakeSyncRW_Var(Self, false)
-    );
-  FSystemTimeInternal := TSystemTimeProvider.Create;
-  FSystemTime := FSystemTimeInternal;
+  VInternalDebugConfig := TInternalDebugConfig.Create;
 
-  FBitmapTileSaveLoadFactory := TBitmapTileSaveLoadFactory.Create(FBitmapFactory);
-  FArchiveReadWriteFactory := TArchiveReadWriteFactory.Create;
-
-  FAppStartedNotifierInternal := TNotifierOneOperation.Create(TNotifierBase.Create);
-  FAppStartedNotifier := FAppStartedNotifierInternal;
-  FAppClosingNotifierInternal := TNotifierOneOperation.Create(TNotifierBase.Create);
-  FAppClosingNotifier := FAppClosingNotifierInternal;
   FMainConfigProvider :=
     TSASMainConfigProvider.Create(
       FBaseConfigPath.FullPath,
@@ -388,53 +434,126 @@ begin
       HInstance
     );
 
+  VInternalDebugConfig.ReadConfig(FMainConfigProvider.GetSubItem('Debug'));
+
+  FDebugInfoSubSystem := TDebugInfoSubSystem.Create(VInternalDebugConfig);
+
+  FHashFunction :=
+    THashFunctionWithCounter.Create(
+      THashFunctionCityHash.Create,
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewSubList('HashFunction')
+    );
+
+  FImageResamplerFactoryList := TImageResamplerFactoryListStaticSimple.Create;
+  FMapVersionFactoryList := TMapVersionFactoryList.Create(FHashFunction);
+
+  FAppearanceOfMarkFactory := TAppearanceOfMarkFactory.Create(FHashFunction);
+  FInternalBrowserContent := TInternalBrowserLastContent.Create;
+
+
+  FGlobalConfig :=
+    TGlobalConfig.Create(
+      VInternalDebugConfig,
+      FAppearanceOfMarkFactory,
+      FBaseCahcePath,
+      FBaseConfigPath,
+      FBaseDataPath,
+      FBaseApplicationPath
+    );
+
   FGlobalConfig.ReadConfig(FMainConfigProvider);
+
+  FVectorItemSubsetBuilderFactory :=
+    TVectorItemSubsetBuilderFactory.Create(
+      FHashFunction
+    );
+  FBGTimerNotifierInternal :=
+    TNotifierTime.Create(
+      GSync.SyncVariable.Make(Self.ClassName + 'BGTimerNotifier')
+    );
+  FBGTimerNotifier := FBGTimerNotifierInternal;
+  FBitmapFactory :=
+    TBitmap32BufferFactory.Create(
+      FBGTimerNotifier,
+      GSync.SyncVariable.Make(Self.ClassName)
+    );
+  FSystemTimeInternal := TSystemTimeProvider.Create;
+  FSystemTime := FSystemTimeInternal;
+
+  FBitmapTileSaveLoadFactory := TBitmapTileSaveLoadFactory.Create(FBitmapFactory);
+  FArchiveReadWriteFactory := TArchiveReadWriteFactory.Create;
+
+  VNotifierSync := GSync.SyncVariable.Make(Self.ClassName + 'Notifiers');
+  VOneOperationSync := GSync.SyncVariable.Make(Self.ClassName + 'OneOperation');
+
+  FAppStartedNotifierInternal :=
+    TNotifierOneOperation.Create(
+      VOneOperationSync,
+      TNotifierBase.Create(VNotifierSync)
+    );
+  FAppStartedNotifier := FAppStartedNotifierInternal;
+  FAppClosingNotifierInternal :=
+    TNotifierOneOperation.Create(
+      VOneOperationSync,
+      TNotifierBase.Create(VNotifierSync)
+    );
+  FAppClosingNotifier := FAppClosingNotifierInternal;
 
   VSleepByClass := FMainConfigProvider.GetSubItem('SleepByClass');
 
   FResourceProvider := FMainConfigProvider.GetSubItem('sas:\Resource');
-  FVectorItemsFactory := TVectorItemsFactorySimple.Create;
+  FVectorGeometryProjectedFactory := TGeometryProjectedFactory.Create;
+  FVectorGeometryLonLatFactory := TGeometryLonLatFactory.Create(FHashFunction);
 
   FGlobalInternetState := TGlobalInternetState.Create;
 
   FProjConverterFactory := TProjConverterFactory.Create;
+  FLastSelectionInfo := TLastSelectionInfo.Create;
+  FLastSearchResult := TLastSearchResult.Create;
 
-  FCoordConverterFactory := TCoordConverterFactorySimple.Create;
-  FProjectionFactory := TProjectionInfoFactory.Create(MakeSyncRW_Var(Self, False));
+  FDatumFactory := TDatumFactory.Create(FHashFunction);
+  FCoordConverterFactory := TCoordConverterFactorySimple.Create(FHashFunction, FDatumFactory);
+  FProjectionFactory := TProjectionInfoFactory.Create(FHashFunction, GSync.SyncVariable.Make(Self.ClassName));
   FCoordConverterList := TCoordConverterListStaticSimple.Create(FCoordConverterFactory);
-  FLocalConverterFactory := TLocalCoordConverterFactorySimpe.Create(FProjectionFactory);
+  FLocalConverterFactory :=
+    TLocalCoordConverterFactorySimpe.Create(
+      TLocalCoordConverterFactory.Create(FHashFunction),
+      FProjectionFactory
+    );
 
   FCacheConfig := TGlobalCacheConfig.Create(FBaseCahcePath);
   FDownloadInfo := TDownloadInfoSimple.Create(nil);
   VViewCnonfig := FMainConfigProvider.GetSubItem('VIEW');
 
-  if FGlobalConfig.GlobalAppConfig.IsShowDebugInfo then begin
-    FPerfCounterList := TInternalPerformanceCounterList.Create('Main', TInternalPerformanceCounterFactory.Create);
-    if TBaseInterfacedObject = TBaseInterfacedObjectDebug then begin
-      FPerfCounterList.AddSubList(TBaseInterfacedObjectDebug.GetCounters);
-    end;
-  end else begin
-    FPerfCounterList := TInternalPerformanceCounterFake.Create;
-  end;
-
   FGUISyncronizedTimer := TTimer.Create(nil);
   FGUISyncronizedTimer.Enabled := False;
-  FGUISyncronizedTimer.Interval := VSleepByClass.ReadInteger('GUISyncronizedTimer', 200);
+  FGUISyncronizedTimer.Interval := VSleepByClass.ReadInteger('GUISyncronizedTimer', 16);
   FGUISyncronizedTimer.OnTimer := Self.OnGUISyncronizedTimer;
 
-  FGUISyncronizedTimerNotifierInternal := TNotifierTime.Create;
+  FGUISyncronizedTimerNotifierInternal :=
+    TNotifierTime.Create(
+      GSync.SyncVariable.Make(Self.ClassName + 'GUITimerNotifier')
+    );
   FGUISyncronizedTimerNotifier := FGUISyncronizedTimerNotifierInternal;
-  FGUISyncronizedTimerCounter := FPerfCounterList.CreateAndAddNewCounter('GUITimer');
+  FGUISyncronizedTimerCounter := FDebugInfoSubSystem.RootCounterList.CreateAndAddNewCounter('GUITimer');
 
-  FGlobalBerkeleyDBHelper := TGlobalBerkeleyDBHelper.Create(FCacheConfig.BDBCachePath);
+  FGlobalBerkeleyDBHelper := TGlobalBerkeleyDBHelper.Create(FBaseApplicationPath);
 
-  FTerrainProviderList := TTerrainProviderListSimple.Create(FProjConverterFactory, FGlobalConfig.TerrainDataPath, FCacheConfig);
+  FTerrainProviderList :=
+    TTerrainProviderListSimple.Create(
+      FProjConverterFactory,
+      FCoordConverterFactory,
+      FGlobalConfig.TerrainDataPath,
+      FCacheConfig.GECachePath,
+      FCacheConfig.GCCachePath
+    );
 
   FMainThreadConfigListener := TNotifyEventListenerSync.Create(FGUISyncronizedTimerNotifier, 1000, Self.OnMainThreadConfigChange);
   FGlobalConfig.MainThreadConfig.ChangeNotifier.Add(FMainThreadConfigListener);
   OnMainThreadConfigChange;
 
-  FGPSDatum := TDatum.Create(3395, 6378137, 6356752);
+  FGPSDatum := FDatumFactory.GetByCode(CYandexDatumEPSG);
+  FGeoCalc := TGeoCalc.Create(FGPSDatum);
 
   VResamplerFactoryList := TImageResamplerFactoryListStaticSimple.Create;
 
@@ -449,7 +568,7 @@ begin
 
   FGpsTrackRecorderInternal :=
     TGpsTrackRecorder.Create(
-      FVectorItemsFactory,
+      FVectorGeometryLonLatFactory,
       FGlobalConfig.GpsTrackRecorderFileName
     );
   FGpsTrackRecorder := FGpsTrackRecorderInternal;
@@ -457,61 +576,36 @@ begin
   FTileNameGenerator := TTileFileNameGeneratorsSimpleList.Create;
   FTileNameParser := TTileFileNameParsersSimpleList.Create;
 
+  FVectorDataItemMainInfoFactory := TVectorDataItemMainInfoFactory.Create(FHashFunction, THtmlToHintTextConverterStuped.Create);
+  FVectorDataFactory := TVectorDataFactorySimple.Create(FHashFunction);
+
   FContentTypeManager :=
     TContentTypeManagerSimple.Create(
-      FVectorItemsFactory,
+      FVectorGeometryLonLatFactory,
+      FVectorDataFactory,
+      FVectorItemSubsetBuilderFactory,
       FBitmapTileSaveLoadFactory,
       FArchiveReadWriteFactory,
-      FPerfCounterList
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewSubList('Content')
     );
 
   FMapCalibrationList := TMapCalibrationListBasic.Create;
-  VMarksKmlLoadCounterList := FPerfCounterList.CreateAndAddNewSubList('Import');
+  FProjectedGeometryProvider :=
+    TGeometryProjectedProvider.Create(
+      FHashFunction,
+      FVectorGeometryProjectedFactory
+    );
 
-  // xml loaders
-  VXmlLoader :=
-    TXmlInfoSimpleParser.Create(
-      FVectorItemsFactory,
-      True,
-      VMarksKmlLoadCounterList
+  FValueToStringConverter :=
+    TValueToStringConverterChangeable.Create(
+      FGlobalConfig.ValueToStringConverterConfig,
+      FGlobalConfig.LanguageManager.ChangeNotifier
     );
-{$if defined(VSAGPS_ALLOW_IMPORT_KML)}
-  VKmlLoader := VXmlLoader;
-  VKmzLoader :=
-    TKmzInfoSimpleParser.Create(
-      TXmlInfoSimpleParser.Create(FVectorItemsFactory, True, nil),
-      FArchiveReadWriteFactory,
-      VMarksKmlLoadCounterList
-    );
-{$else}
-  VKmlLoader :=
-    TKmlInfoSimpleParser.Create(
-      FVectorItemsFactory,
-      VMarksKmlLoadCounterList
-    );
-  VKmzLoader :=
-    TKmzInfoSimpleParser.Create(
-      TKmlInfoSimpleParser.Create(FVectorItemsFactory, nil),
-      FArchiveReadWriteFactory,
-      VMarksKmlLoadCounterList
-    );
-{$ifend}
-  FVectorDataFactory := TVectorDataFactorySimple.Create(THtmlToHintTextConverterStuped.Create);
-  FImportFileByExt := TImportByFileExt.Create(
-    FVectorDataFactory,
-    FVectorItemsFactory,
-    VXmlLoader,
-    TPLTSimpleParser.Create(
-      FVectorItemsFactory,
-      VMarksKmlLoadCounterList
-    ),
-    VKmlLoader,
-    VKmzLoader
-  );
+
   FGCThread :=
     TGarbageCollectorThread.Create(
       FAppClosingNotifier,
-      FPerfCounterList.CreateAndAddNewCounter('GCTimer'),
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewCounter('GCTimer'),
       FBGTimerNotifierInternal,
       VSleepByClass.ReadInteger(TGarbageCollectorThread.ClassName, 1000)
     );
@@ -529,17 +623,20 @@ begin
       FGPSRecorderInternal,
       FGpsTrackRecorderInternal,
       GUISyncronizedTimerNotifier,
-      FPerfCounterList
+      FDebugInfoSubSystem.RootCounterList
     );
-  FGeoCoderList :=
-    TGeoCoderListSimple.Create(
-      FGlobalConfig.InetConfig,
-      BGTimerNotifier,
-      TDownloadResultFactory.Create,
-      FGlobalConfig.ValueToStringConverterConfig
+  FGeoCodePlacemarkFactory :=
+    TGeoCodePlacemarkFactory.Create(
+      FVectorGeometryLonLatFactory,
+      FHashFunction
     );
-  FMarkPictureList := TMarkPictureListSimple.Create(FGlobalConfig.MarksIconsPath, FContentTypeManager);
-
+  FMarkPictureList :=
+    TMarkPictureListSimple.Create(
+      FHashFunction,
+      FGlobalConfig.MarksIconsPath,
+      FGlobalConfig.MediaDataPath,
+      FContentTypeManager
+    );
   FMarkCategoryFactory :=
     TMarkCategoryFactory.Create(
       FGlobalConfig.MarksCategoryFactoryConfig
@@ -548,21 +645,66 @@ begin
     TMarkFactory.Create(
       FGlobalConfig.MarksFactoryConfig,
       FMarkPictureList,
-      FVectorItemsFactory,
+      FHashFunction,
+      FAppearanceOfMarkFactory,
       THtmlToHintTextConverterStuped.Create
     );
-  FMarksDb :=
-    TMarksSystem.Create(
-      FGlobalConfig.LanguageManager,
+  FMarkSystem :=
+    TMarkSystem.Create(
       FGlobalConfig.MarksDbPath,
       FMarkPictureList,
-      FVectorItemsFactory,
-      FPerfCounterList.CreateAndAddNewSubList('MarksSystem'),
-      THtmlToHintTextConverterStuped.Create,
       FMarkFactory,
       FMarkCategoryFactory,
-      FGlobalConfig.MarksFactoryConfig,
-      FGlobalConfig.MarksCategoryFactoryConfig
+      FHashFunction,
+      FAppearanceOfMarkFactory,
+      FVectorGeometryLonLatFactory,
+      FVectorItemSubsetBuilderFactory,
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewSubList('MarksSystem'),
+      FAppStartedNotifier,
+      THtmlToHintTextConverterStuped.Create
+    );
+
+  FImporterList :=
+    TVectorItemTreeImporterListSimple.Create(
+      FValueToStringConverter,
+      FVectorDataFactory,
+      FVectorDataItemMainInfoFactory,
+      FVectorGeometryLonLatFactory,
+      FVectorItemSubsetBuilderFactory,
+      FArchiveReadWriteFactory,
+      FMarkPictureList,
+      FHashFunction,
+      FAppearanceOfMarkFactory,
+      FMarkFactory,
+      THtmlToHintTextConverterStuped.Create,
+      FGlobalConfig.MediaDataPath,
+      FContentTypeManager,
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewSubList('Import')
+    );
+
+  FExporterList :=
+    TVectorItemTreeExporterListSimple.Create(
+      FArchiveReadWriteFactory,
+      FMarkPictureList,
+      FHashFunction,
+      FAppearanceOfMarkFactory,
+      FVectorGeometryLonLatFactory,
+      FVectorItemSubsetBuilderFactory,
+      FMarkFactory,
+      FMarkCategoryFactory,
+      THtmlToHintTextConverterStuped.Create,
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewSubList('Export')
+    );
+
+  FGeoCoderList :=
+    TGeoCoderListSimple.Create(
+      FGlobalConfig.InetConfig,
+      BGTimerNotifier,
+      FVectorItemSubsetBuilderFactory,
+      FGeoCodePlacemarkFactory,
+      TDownloadResultFactory.Create,
+      FValueToStringConverter,
+      FMarkSystem.MarkDb
     );
   VFilesIteratorFactory := TZmpFileNamesIteratorFactory.Create;
   VFilesIterator := VFilesIteratorFactory.CreateIterator(FGlobalConfig.MapsPath.FullPath, '');
@@ -572,29 +714,62 @@ begin
       FCoordConverterFactory,
       FArchiveReadWriteFactory,
       FContentTypeManager,
+      FMapVersionFactoryList.GetSimpleVersionFactory,
       FBitmapFactory,
       FGlobalConfig.LanguageManager,
       VFilesIterator
     );
 
+  FMapTypeSetBuilderFactory := TMapTypeSetBuilderFactory.Create(FHashFunction);
+  FMapTypeListBuilderFactory := TMapTypeListBuilderFactory.Create(FHashFunction);
+  VTileLoadResampler :=
+    TImageResamplerFactoryChangeableByConfig.Create(
+      FGlobalConfig.TileLoadResamplerConfig,
+      FImageResamplerFactoryList
+    );
+  VTileGetPrevResampler :=
+    TImageResamplerFactoryChangeableByConfig.Create(
+      FGlobalConfig.TileGetPrevResamplerConfig,
+      FImageResamplerFactoryList
+    );
+  VTileReprojectResampler :=
+    TImageResamplerFactoryChangeableByConfig.Create(
+      FGlobalConfig.TileReprojectResamplerConfig,
+      FImageResamplerFactoryList
+    );
+  VTileDownloadResampler :=
+    TImageResamplerFactoryChangeableByConfig.Create(
+      FGlobalConfig.TileDownloadResamplerConfig,
+      FImageResamplerFactoryList
+    );
+
   FMainMapsList :=
     TMapTypesMainList.Create(
+      FMapTypeSetBuilderFactory,
       FZmpInfoSet,
-      FGlobalConfig.TileLoadResamplerConfig,
-      FGlobalConfig.TileGetPrevResamplerConfig,
-      FGlobalConfig.TileReprojectResamplerConfig,
-      FGlobalConfig.TileDownloadResamplerConfig,
-      FPerfCounterList.CreateAndAddNewSubList('MapType')
+      VTileLoadResampler,
+      VTileGetPrevResampler,
+      VTileReprojectResampler,
+      VTileDownloadResampler,
+      FDebugInfoSubSystem.RootCounterList.CreateAndAddNewSubList('MapType')
     );
   FSkyMapDraw := TSatellitesInViewMapDrawSimple.Create;
+
+  VKmlLoader :=
+    TXmlInfoSimpleParser.Create(
+      FVectorGeometryLonLatFactory,
+      FVectorDataFactory,
+      FVectorItemSubsetBuilderFactory,
+      True
+    );
   FPathDetalizeList :=
     TPathDetalizeProviderListSimple.Create(
       FGlobalConfig.LanguageManager,
       FGlobalConfig.InetConfig,
       FBGTimerNotifier,
       TDownloadResultFactory.Create,
-      FVectorDataFactory,
-      FVectorItemsFactory,
+      FVectorDataItemMainInfoFactory,
+      FVectorGeometryLonLatFactory,
       VKmlLoader
     );
 
@@ -608,22 +783,31 @@ begin
   FInternalBrowser :=
     TInternalBrowserByForm.Create(
       FGlobalConfig.LanguageManager,
+      FInternalBrowserContent,
       FGlobalConfig.InternalBrowserConfig,
       FGlobalConfig.InetConfig.ProxyConfig,
       FContentTypeManager
     );
   FDebugInfoWindow :=
     TDebugInfoWindow.Create(
-      FGlobalConfig.GlobalAppConfig,
-      FPerfCounterList
+      FGlobalConfig.InternalDebugConfig,
+      FDebugInfoSubSystem
     );
   FBatteryStatus := TBatteryStatus.Create;
   FLastSelectionSaver :=
     TLastSelectionInfoSaver.Create(
       FAppClosingNotifier,
-      FVectorItemsFactory,
-      FGlobalConfig.LastSelectionInfo,
+      FVectorGeometryLonLatFactory,
+      FLastSelectionInfo,
       FGlobalConfig.LastSelectionFileName
+    );
+  FTileStorageTypeList :=
+    TTileStorageTypeListSimple.Create(
+      FMapVersionFactoryList,
+      FContentTypeManager,
+      FCacheConfig,
+      FGlobalBerkeleyDBHelper,
+      FBGTimerNotifier
     );
 end;
 
@@ -635,11 +819,10 @@ begin
   FTileNameGenerator := nil;
   FContentTypeManager := nil;
   FMapCalibrationList := nil;
-  FMarksDb := nil;
+  FMarkSystem := nil;
   FGPSRecorder := nil;
   FreeAndNil(FMainMapsList);
   FCoordConverterFactory := nil;
-  FMainFormConfig := nil;
   FMarkPictureList := nil;
   FSkyMapDraw := nil;
   FreeAndNil(FProtocol);
@@ -653,6 +836,11 @@ begin
   FProjConverterFactory := nil;
   FGlobalBerkeleyDBHelper := nil;
   inherited;
+end;
+
+function TGlobalState.GetPerfCounterList: IInternalPerformanceCounterList;
+begin
+  Result := FDebugInfoSubSystem.RootCounterList;
 end;
 
 procedure TGlobalState.InitProtocol;
@@ -697,7 +885,7 @@ begin
 
   VInternalDomainInfoProvider :=
     TInternalDomainInfoProviderByMarksSystem.Create(
-      FMarksDb,
+      FMarkSystem,
       VTextProivder,
       VTextProviderList
     );
@@ -708,12 +896,21 @@ begin
 
   VInternalDomainInfoProvider :=
     TInternalDomainInfoProviderByLastSearchResults.Create(
-      FGlobalConfig.LastSearchResultConfig,
+      FLastSearchResult,
       VTextProivder,
       nil
     );
   VInternalDomainInfoProviderList.Add(
     CLastSearchResultsInternalDomain,
+    VInternalDomainInfoProvider
+  );
+
+  VInternalDomainInfoProvider :=
+    TInternalDomainInfoProviderByLastContent.Create(
+      FInternalBrowserContent
+    );
+  VInternalDomainInfoProviderList.Add(
+    CShowMessageDomain,
     VInternalDomainInfoProvider
   );
 
@@ -780,7 +977,7 @@ procedure TGlobalState.StartThreads;
 begin
   FAppStartedNotifierInternal.ExecuteOperation;
   if FGlobalConfig.GlobalAppConfig.IsSendStatistic then begin
-    FInvisibleBrowser.NavigateAndWait('http://sasgis.ru/stat/index.html');
+    FInvisibleBrowser.NavigateAndWait('http://sasgis.org/stat/index.html');
   end;
   FLastSelectionSaver.Start;
   FGUISyncronizedTimer.Enabled := True;
@@ -822,9 +1019,8 @@ begin
     FMapVersionFactoryList,
     FGlobalConfig.MainMemCacheConfig,
     FCacheConfig,
-    FGlobalBerkeleyDBHelper,
-    FTileNameGenerator,
-    FTileNameParser,
+    FTileStorageTypeList,
+    FHashFunction,
     FBGTimerNotifier,
     FAppClosingNotifier,
     FGlobalConfig.InetConfig,
@@ -837,36 +1033,12 @@ begin
     FProjConverterFactory,
     VLocalMapsConfig
   );
-  FMainFormConfig :=
-    TMainFormConfig.Create(
-      FLocalConverterFactory,
-      FContentTypeManager,
-      FGeoCoderList,
-      FGlobalConfig.LastSearchResultConfig,
-      FMainMapsList.MapsSet,
-      FMainMapsList.LayersSet,
-      FMainMapsList.FirstMainMapGUID,
-      FPerfCounterList.CreateAndAddNewSubList('ViewState')
-    );
 
-  FSensorList :=
-    TSensorListStuped.Create(
-      FGlobalConfig.LanguageManager,
-      FMainFormConfig.ViewPortState.View,
-      FMainFormConfig.NavToPoint,
-      FSystemTime,
-      FGPSRecorder,
-      FGpsSystem,
-      FBatteryStatus,
-      FGlobalConfig.ValueToStringConverterConfig
-    );
   FGPSRecorderInternal.Load;
   FGpsTrackRecorderInternal.Load;
 
   if (not ModuleIsLib) then begin
-    FMainFormConfig.ReadConfig(MainConfigProvider);
-    FMarkPictureList.ReadConfig(MainConfigProvider);
-    FMarksDb.ReadConfig(MainConfigProvider);
+    FMarkPictureList.LoadList;
   end;
 end;
 
@@ -915,10 +1087,7 @@ begin
 
   FGPSRecorderInternal.Save;
   FGpsTrackRecorderInternal.Save;
-  FMainFormConfig.WriteConfig(MainConfigProvider);
   FCacheConfig.WriteConfig(FMainConfigProvider);
-  FMarkPictureList.WriteConfig(MainConfigProvider);
-  FMarksDb.WriteConfig(MainConfigProvider);
   FGlobalConfig.WriteConfig(MainConfigProvider);
 end;
 

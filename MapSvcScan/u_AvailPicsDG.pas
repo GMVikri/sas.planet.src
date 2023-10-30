@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_AvailPicsDG;
@@ -61,8 +61,8 @@ procedure GenerateAvailPicsDG(
 implementation
 
 uses
-  Windows,
-  u_GeoToStr;
+  u_StreamReadOnlyByBinaryData,
+  u_GeoToStrFunc;
 
 (*
 DG:
@@ -117,7 +117,7 @@ DG:
 *)
 
 var
-  Stacks : array [0..13,0..3] of string =
+  Stacks: array [0..13,0..3] of string =
             (
              ('227400001','1','GlobeXplorer Premium Stack','020100S'),
              ('227400001','2','USGS 1:24k Topo Stack','020100S'),
@@ -179,7 +179,7 @@ procedure GenerateAvailPicsDG(
   const ATileInfoPtr: PAvailPicsTileInfo;
   const AMapSvcScanStorage: IMapSvcScanStorage
 );
-var i,k: Integer;
+var i, k: Integer;
 begin
   k := length(Stacks);
 
@@ -187,13 +187,16 @@ begin
   SetLength(ADGs, k);
 
   // create objects
-  for i:=0 to k-1 do begin
-    ADGs[i] := TAvailPicsDG.Create(ATileInfoPtr, AMapSvcScanStorage);
+  for i := 0 to k - 1 do begin
+    ADGs[i] := TAvailPicsDG.Create(
+      ATileInfoPtr,
+      AMapSvcScanStorage
+    );
     with ADGs[i] do begin
-      FStack_Key       := Stacks[i,0];
-      FStack_Number    := Stacks[i,1];
-      FStack_Descript  := Stacks[i,2];
-      FStack_AppId     := Stacks[i,3];
+      FStack_Key       := Stacks[i, 0];
+      FStack_Number    := Stacks[i, 1];
+      FStack_Descript  := Stacks[i, 2];
+      FStack_AppId     := Stacks[i, 3];
       FBaseStorageName := FBaseStorageName + '_' + FStack_Number;
     end;
   end;
@@ -202,14 +205,14 @@ end;
 function EncodeDG(const S: String): String;
 var i: integer;
 begin
-  Result:=S;
+  Result := S;
 
   if (0<Length(S)) then
-  for i:=1 to Length(S) do begin
+  for i := 1 to Length(S) do begin
     if (0 = (Ord(S[i]) mod 2)) then
-      Result[i]:=Chr(Ord(S[i])+1)
+      Result[i] := Chr(Ord(S[i]) + 1)
     else
-      Result[i]:=Chr(Ord(S[i])-1);
+      Result[i] := Chr(Ord(S[i]) - 1);
   end;
 end;
 
@@ -217,29 +220,29 @@ function Encode64(const S: String): String;
 const
   Codes64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 var
-  i,a,x,b: Integer;
+  i, a, x, b: Integer;
 begin
   Result:='';
-  a:=0;
-  b:=0;
+  a := 0;
+  b := 0;
 
   if (0<Length(S)) then
   for i := 1 to Length(S) do
   begin
-    x:=Ord(S[i]);
-    b:=b*256+x;
-    a:=a+8;
+    x := Ord(S[i]);
+    b := b*256 + x;
+    a := a + 8;
 
     while (a >= 6) do begin
-      a := a-6;
+      a := a - 6;
       x := b div (1 shl a);
       b := b mod (1 shl a);
       Result := Result + Codes64[x + 1];
     end;
   end;
-  
+
   if a>0 then begin
-    Result := Result + Codes64[(b shl (6-a))+1];
+    Result := Result + Codes64[(b shl (6 - a)) + 1];
   end;
 end;
 
@@ -264,7 +267,7 @@ begin
     end
     else SWord := VLine;
   end;
-  
+
   if AWordNmbr <= N then
     Result := SWord
   else
@@ -274,9 +277,9 @@ end;
 procedure TrimQuotes(var S: String);
 begin
   if (0<Length(S)) and ('"'=S[1]) then
-    System.Delete(S,1,1);
+    System.Delete(S, 1, 1);
   if (0<Length(S)) and ('"'=S[Length(S)]) then
-    SetLength(S,(Length(S)-1));
+    SetLength(S, (Length(S) - 1));
 end;
 
 
@@ -289,110 +292,102 @@ end;
 
 function TAvailPicsDG.GUI_Name: String;
 begin
-  Result:=FStack_Number+', '+FStack_Descript;
+  Result := FStack_Number + ', '+FStack_Descript;
 end;
 
 function TAvailPicsDG.ParseResponse(const AResultOk: IDownloadResultOk): Integer;
 var
+  VStream: TStreamReadOnlyByBinaryData;
   i: Integer;
-  VAddResult: Boolean;
   VList: TStringList;
   VLine: String;
   VDate, VId: String;
   VDateOrig, VProvider, VColor, VResolution: String;
   VParams: TStrings;
-  VMemoryStream: TMemoryStream;
   VItemExists: Boolean;
   VItemFetched: TDateTime;
 begin
-  VMemoryStream := TMemoryStream.Create;
-  VMemoryStream.Position:=0;
-  VMemoryStream.SetSize(AResultOk.Data.Size);
-  CopyMemory(VMemoryStream.Memory, AResultOk.Data.Buffer, AResultOk.Data.Size);
   Result := 0;
 
   if (not Assigned(FTileInfoPtr.AddImageProc)) then
     Exit;
 
-  if (nil=VMemoryStream) or (0=VMemoryStream.Size) then
-    Exit;
-
-  VList:=TStringList.Create;
+  VParams := nil;
+  VList := nil;
+  VStream := TStreamReadOnlyByBinaryData.Create(AResultOk.Data);
   try
-    VList.LoadFromStream(VMemoryStream);
+    if (0 = VStream.Size) then
+      Exit;
 
-    if (0<VList.Count) then
-    for i := 0 to VList.Count-1 do
+    VList := TStringList.Create;
+    VList.LoadFromStream(VStream);
+
+    if (0 < VList.Count) then
+    for i := 0 to VList.Count - 1 do
     try
       //'7066342802,2007-05-06,"DigitalGlobe",-1,0.6,"Color-E",50000.0,'
-      VParams:=nil;
-      VLine:=VList[i];
-    
+      VLine := VList[i];
+
       // date as 2007/05/06
       VDate := GetWord(VLine, ',', 2);
-      if (Length(VDate)<10) then begin
-        break;
-      end;
-      VDate[5] := DateSeparator;
-      VDate[8] := DateSeparator;
+      if (Length(VDate) >= 10) then begin
+        VDate[5] := DateSeparator;
+        VDate[8] := DateSeparator;
 
-      // id = 7066342802
-      VId := GetWord(VLine, ',', 1);
+        // id = 7066342802
+        VId := GetWord(VLine, ',', 1);
 
-      // params:
+        // date original as 2007-05-06
+        VDateOrig := GetWord(VLine, ',', 2);
 
-      // date original as 2007-05-06
-      VDateOrig := GetWord(VLine, ',', 2);
+        // DigitalGlobe
+        VProvider := GetWord(VLine, ',', 3);
+        TrimQuotes(VProvider);
 
-      // DigitalGlobe
-      VProvider := GetWord(VLine, ',', 3);
-      TrimQuotes(VProvider);
+        // Color-E
+        VColor := GetWord(VLine, ',', 6);
+        TrimQuotes(VColor);
 
-      // Color-E
-      VColor := GetWord(VLine, ',', 6);
-      TrimQuotes(VColor);
+        // 0.6
+        VResolution := GetWord(VLine, ',', 5);
 
-      // 0.6
-      VResolution := GetWord(VLine, ',', 5);
+        if FTileInfoPtr.LowResToo or CheckHiResResolution(VResolution) then begin
+          // make params
+          if (VParams <> nil) then
+            VParams.Clear
+          else
+            VParams := TStringList.Create;
+          VParams.Values['tid'] := VId;
+          VParams.Values['date'] := VDateOrig;
+          VParams.Values['provider'] := VProvider;
+          VParams.Values['resolution'] := VResolution;
+          VParams.Values['color'] := VColor;
 
-      if FTileInfoPtr.LowResToo or CheckHiResResolution(VResolution) then begin
-        // make params
-        VParams:=TStringList.Create;
-        VParams.Values['tid']:=VId;
-        VParams.Values['date']:=VDateOrig;
-        VParams.Values['provider']:=VProvider;
-        VParams.Values['resolution']:=VResolution;
-        VParams.Values['color']:=VColor;
+          // check
+          VItemExists := ItemExists(FBaseStorageName, VId, @VItemFetched);
 
-        // check
-        VItemExists := ItemExists(FBaseStorageName, VId, @VItemFetched);
-
-        // add item
-        VAddResult := FTileInfoPtr.AddImageProc(
-          Self,
-          VDate,
-          VId,
-          VItemExists,
-          VItemFetched,
-          VParams
-        );
-        FreeAndNil(VParams);
-
-        if VAddResult then begin
-          Inc(Result);
+          // add item
+          if FTileInfoPtr.AddImageProc(
+            Self,
+            VDate,
+            VId,
+            VItemExists,
+            VItemFetched,
+            VParams
+          ) then begin
+            // added
+            Inc(Result);
+          end;
+          // FreeAndNil(VParams);
         end;
       end;
     except
-      if (nil<>VParams) then begin
-        try
-          VParams.Free;
-        except
-        end;
-        VParams:=nil;
-      end;
+      FreeAndNil(VParams);
     end;
   finally
-    FreeAndNil(VList);
+    VStream.Free;
+    VList.Free;
+    VParams.Free;
   end;
 end;
 
@@ -401,14 +396,14 @@ var
   VLink: string;
   VEncrypt: String;
 begin
-  VEncrypt:= Encode64(EncodeDG('cmd=info&id='+FStack_Key+
-                               '&appid='+FStack_AppId+
-                               '&ls='+FStack_Number+
-                               '&xc='+RoundEx(FTileInfoPtr.LonLat.X, 6)+
-                               '&yc='+RoundEx(FTileInfoPtr.LonLat.y, 6)+
-                               '&mpp='+R2StrPoint(FTileInfoPtr.mpp)+
-                               '&iw='+inttostr(FTileInfoPtr.wi)+
-                               '&ih='+inttostr(FTileInfoPtr.hi)+
+  VEncrypt:= Encode64(EncodeDG('cmd=info&id=' + FStack_Key+
+                               '&appid=' + FStack_AppId+
+                               '&ls=' + FStack_Number+
+                               '&xc=' + RoundEx(FTileInfoPtr.LonLat.X, 6)+
+                               '&yc=' + RoundEx(FTileInfoPtr.LonLat.y, 6)+
+                               '&mpp=' + R2StrPoint(FTileInfoPtr.mpp)+
+                               '&iw=' + inttostr(FTileInfoPtr.wi)+
+                               '&ih=' + inttostr(FTileInfoPtr.hi)+
                                '&extentset=all'));
   VLink := 'http://image.globexplorer.com/gexservlets/gex?encrypt=' + VEncrypt;
   Result := TDownloadRequest.Create(

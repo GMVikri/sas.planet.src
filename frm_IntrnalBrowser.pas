@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_IntrnalBrowser;
@@ -81,7 +81,6 @@ type
       const AContentTypeManager: IContentTypeManager
     ); reintroduce;
 
-    procedure showmessage(const ACaption, AText: string);
     procedure Navigate(const ACaption, AUrl: string);
     procedure NavigatePost(const ACaption, AUrl, AReferer, APostData: string);
   end;
@@ -97,7 +96,7 @@ uses
 {$R *.dfm}
 
 { TfrmIntrnalBrowser }
- 
+
 constructor TfrmIntrnalBrowser.Create(
   const ALanguageManager: ILanguageManager;
   const AConfig: IWindowPositionConfig;
@@ -195,6 +194,8 @@ end;
 procedure TfrmIntrnalBrowser.NavigatePost(const ACaption, AUrl, AReferer, APostData: string);
 var
   VPostData, VHeaders: OleVariant;
+  VFlags: OleVariant;
+  VTargetFrameName: OleVariant;
   i: Integer;
 begin
   EmbeddedWB1.HTMLCode.Text:=SAS_STR_WiteLoad;
@@ -206,11 +207,13 @@ begin
   for i := 1 to Length(APostData) do begin
     VPostData[i-1] := Ord(APostData[i]);
   end;
-  
+
   VHeaders := 'Referer: '+AReferer+#$D#$A+
               'Content-Type: application/x-www-form-urlencoded';
 
-  EmbeddedWB1.Navigate(AUrl, EmptyParam, EmptyParam, VPostData, VHeaders);
+  VFlags := EmptyParam;
+  VTargetFrameName := EmptyParam;
+  EmbeddedWB1.Navigate(AUrl, VFlags, VTargetFrameName, VPostData, VHeaders);
 end;
 
 procedure TfrmIntrnalBrowser.OnConfigChange;
@@ -251,16 +254,6 @@ begin
   end;
   FCurrentCaption := VCaption;
   Self.Caption := VCaption;
-end;
-
-procedure TfrmIntrnalBrowser.showmessage(const ACaption,AText: string);
-begin
-  EmbeddedWB1.GoAboutBlank;
-  Application.ProcessMessages; // sometimes it shows empty window without this line (only for first run)
-  EmbeddedWB1.HTMLCode.Text:=AText;
-  SetGoodCaption(ACaption);
-  ResetImageView(FALSE);
-  show;
 end;
 
 procedure TfrmIntrnalBrowser.EmbeddedWB1KeyDown(Sender: TObject; var Key: Word;

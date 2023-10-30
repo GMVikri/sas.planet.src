@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_MainFormConfig;
@@ -23,23 +23,20 @@ unit u_MainFormConfig;
 interface
 
 uses
-  i_MapTypes,
+  i_MapTypeSet,
+  i_MapTypeSetBuilder,
   i_ActiveMapsConfig,
-  i_LocalCoordConverterFactorySimpe,
-  i_ViewPortState,
   i_NavigationToPoint,
   i_MainFormConfig,
   i_MainFormBehaviourByGPSConfig,
+  i_StringHistory,
   i_MainGeoCoderConfig,
+  i_MainFormLayersConfig,
   i_KeyMovingConfig,
   i_MapMovingConfig,
   i_MapZoomingConfig,
-  i_ContentTypeManager,
-  i_GeoCoderList,
   i_DownloadUIConfig,
   i_WindowPositionConfig,
-  i_InternalPerformanceCounter,
-  I_LastSearchResultConfig,
   u_ConfigDataElementComplexBase;
 
 type
@@ -50,14 +47,13 @@ type
     FToolbarsLock: IMainWindowToolbarsLock;
     FNavToPoint: INavigationToPoint;
     FGPSBehaviour: IMainFormBehaviourByGPSConfig;
+    FSearchHistory: IStringHistory;
     FMainGeoCoderConfig: IMainGeoCoderConfig;
     FMainMapsConfig: IMainMapsConfig;
-    FViewPortState: IViewPortState;
     FDownloadUIConfig: IDownloadUIConfig;
     FKeyMovingConfig: IKeyMovingConfig;
     FMapZoomingConfig: IMapZoomingConfig;
     FMapMovingConfig: IMapMovingConfig;
-    FLastSearchResultConfig: ILastSearchResultConfig;
     FMarksExplorerWindowConfig: IWindowPositionConfig;
   private
     function GetMainConfig: IMainFormMainConfig;
@@ -65,24 +61,19 @@ type
     function GetToolbarsLock: IMainWindowToolbarsLock;
     function GetNavToPoint: INavigationToPoint;
     function GetGPSBehaviour: IMainFormBehaviourByGPSConfig;
+    function GetSearchHistory: IStringHistory;
     function GetMainGeoCoderConfig: IMainGeoCoderConfig;
     function GetMainMapsConfig: IMainMapsConfig;
-    function GetViewPortState: IViewPortState;
     function GetDownloadUIConfig: IDownloadUIConfig;
     function GetKeyMovingConfig: IKeyMovingConfig;
     function GetMapZoomingConfig: IMapZoomingConfig;
     function GetMapMovingConfig: IMapMovingConfig;
-    function GetLastSearchResultConfig: ILastSearchResultConfig;
     function GetMarksExplorerWindowConfig: IWindowPositionConfig;
   public
     constructor Create(
-      const ACoordConverterFactory: ILocalCoordConverterFactorySimpe;
-      const AContentTypeManager: IContentTypeManager;
-      const AGeoCoderList: IGeoCoderList;
-      const ALastSearchResultConfig: ILastSearchResultConfig;
+      const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
       const AMapsSet, ALayersSet: IMapTypeSet;
-      const ADefaultMapGUID: TGUID;
-      const APerfCounterList: IInternalPerformanceCounterList
+      const ADefaultMapGUID: TGUID
     );
   end;
 
@@ -92,11 +83,11 @@ uses
   u_ConfigSaveLoadStrategyBasicProviderSubItem,
   u_ConfigSaveLoadStrategyBasicUseProvider,
   u_MainMapsConfig,
-  u_MapViewPortState,
   u_MainWindowToolbarsLock,
   u_NavigationToPoint,
   u_MainFormLayersConfig,
   u_MainFormBehaviourByGPSConfig,
+  u_StringHistory,
   u_MainGeoCoderConfig,
   u_MapMovingConfig,
   u_MapZoomingConfig,
@@ -108,17 +99,13 @@ uses
 { TMainFormConfig }
 
 constructor TMainFormConfig.Create(
-  const ACoordConverterFactory: ILocalCoordConverterFactorySimpe;
-  const AContentTypeManager: IContentTypeManager;
-  const AGeoCoderList: IGeoCoderList;
-  const ALastSearchResultConfig: ILastSearchResultConfig;
+  const AMapTypeSetBuilderFactory: IMapTypeSetBuilderFactory;
   const AMapsSet, ALayersSet: IMapTypeSet;
-  const ADefaultMapGUID: TGUID;
-  const APerfCounterList: IInternalPerformanceCounterList
+  const ADefaultMapGUID: TGUID
 );
 begin
   inherited Create;
-  FMainConfig := TMainFormMainConfig.Create(AContentTypeManager);
+  FMainConfig := TMainFormMainConfig.Create;
   Add(FMainConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('View'));
   FToolbarsLock := TMainWindowToolbarsLock.Create;
   Add(FToolbarsLock, TConfigSaveLoadStrategyBasicProviderSubItem.Create('PANEL'));
@@ -126,13 +113,13 @@ begin
   Add(FNavToPoint, TConfigSaveLoadStrategyBasicProviderSubItem.Create('NavToPoint'));
   FGPSBehaviour := TMainFormBehaviourByGPSConfig.Create;
   Add(FGPSBehaviour, TConfigSaveLoadStrategyBasicProviderSubItem.Create('MainFormGPSEvents'));
-  FMainGeoCoderConfig := TMainGeoCoderConfig.Create(AGeoCoderList);
+  FMainGeoCoderConfig := TMainGeoCoderConfig.Create;
   Add(FMainGeoCoderConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('GeoCoder'));
-  FMainMapsConfig := TMainMapsConfig.Create(AMapsSet, ALayersSet, ADefaultMapGUID);
+  FSearchHistory := TStringHistory.Create;
+  Add(FSearchHistory, TConfigSaveLoadStrategyBasicProviderSubItem.Create('History'));
+  FMainMapsConfig := TMainMapsConfig.Create(AMapTypeSetBuilderFactory, AMapsSet, ALayersSet, ADefaultMapGUID);
   Add(FMainMapsConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Maps'));
-  FViewPortState := TMapViewPortState.Create(ACoordConverterFactory, FMainMapsConfig, APerfCounterList);
-  Add(FViewPortState, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Position'));
-  FLayersConfig := TMainFormLayersConfig.Create(FMainMapsConfig);
+  FLayersConfig := TMainFormLayersConfig.Create(AMapTypeSetBuilderFactory, FMainMapsConfig);
   Add(FLayersConfig, TConfigSaveLoadStrategyBasicUseProvider.Create);
   FDownloadUIConfig := TDownloadUIConfig.Create;
   Add(FDownloadUIConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('ViewDownload'));
@@ -142,8 +129,6 @@ begin
   Add(FMapZoomingConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('Zooming'));
   FMapMovingConfig := TMapMovingConfig.Create;
   Add(FMapMovingConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('MouseMoving'));
-  FLastSearchResultConfig := ALastSearchResultConfig;
-  Add(FLastSearchResultConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('LastSearchResult'));
   FMarksExplorerWindowConfig := TWindowPositionConfig.Create;
   Add(FMarksExplorerWindowConfig, TConfigSaveLoadStrategyBasicProviderSubItem.Create('MarksExplorerWindow'));
 end;
@@ -198,24 +183,19 @@ begin
   Result := FMapMovingConfig;
 end;
 
-function TMainFormConfig.GetLastSearchResultConfig: ILastSearchResultConfig;
-begin
-  Result := FLastSearchResultConfig;
-end;
-
 function TMainFormConfig.GetNavToPoint: INavigationToPoint;
 begin
   Result := FNavToPoint;
 end;
 
+function TMainFormConfig.GetSearchHistory: IStringHistory;
+begin
+  Result := FSearchHistory;
+end;
+
 function TMainFormConfig.GetToolbarsLock: IMainWindowToolbarsLock;
 begin
   Result := FToolbarsLock;
-end;
-
-function TMainFormConfig.GetViewPortState: IViewPortState;
-begin
-  Result := FViewPortState;
 end;
 
 end.

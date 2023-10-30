@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GeoCoderByWikimapia;
@@ -24,6 +24,7 @@ interface
 
 uses
   Classes,
+  i_InterfaceListSimple,
   i_NotifierOperation,
   i_LocalCoordConverter,
   i_DownloadRequest,
@@ -43,7 +44,7 @@ type
       const AResult: IDownloadResultOk;
       const ASearch: WideString;
       const ALocalConverter: ILocalCoordConverter
-    ): IInterfaceList; override;
+    ): IInterfaceListSimple; override;
   public
   end;
 
@@ -51,15 +52,48 @@ implementation
 
 uses
   SysUtils,
-  StrUtils,
+  ALString,
+  RegExpr,
   t_GeoTypes,
   i_GeoCoder,
+  i_VectorDataItemSimple,
   i_CoordConverter,
-  u_ResStrings,
-  u_GeoCodePlacemark;
+  i_BinaryData,
+  u_BinaryData,
+  u_DownloadRequest,
+  u_InterfaceListSimple,
+  u_ResStrings;
 
 
-{ TGeoCoderByOSM }
+{ TGeoCoderByWikiMapia }
+
+const
+  cFloatRegEx = '[-+]?[0-9]*\.?[0-9]+';
+
+  cSearchResultItemRegEx =
+    '<li class="search-result-item".*?' +
+    'data-latitude="(' + cFloatRegEx + ')".*?' +
+    'data-longitude="(' + cFloatRegEx + ')".*?' +
+    '<strong>(.*?)</strong>.*?' +
+    '<small>(.*?)?(<.*?)*?</small>.*?' +
+    '</li>';
+
+(*
+
+<li class="search-result-item"
+    data-zoom="11"
+    data-latitude="53.91"
+    data-longitude="27.55">
+    <div>
+        <span style="color: #9BBDDE;">&bull;</span> <strong>Minsk (Минск, Мінск)</strong>
+        <span class="label label-info">6508&nbsp;km</span>
+    </div>
+    <small>
+        Minsk, Belarus <span class="small">(city)</span>
+    </small>
+</li>
+
+*)
 
 function TGeoCoderByWikiMapia.ParseResultToPlacemarksList(
   const ACancelNotifier: INotifierOperation;
@@ -67,70 +101,57 @@ function TGeoCoderByWikiMapia.ParseResultToPlacemarksList(
   const AResult: IDownloadResultOk;
   const ASearch: WideString;
   const ALocalConverter: ILocalCoordConverter
-): IInterfaceList;
+): IInterfaceListSimple;
 var
-  slat, slon, sname, sdesc, sfulldesc{, vzoom}: string;
-  i, j: integer;
+  VStr: AnsiString;
+  VName, VDesc: string;
   VPoint: TDoublePoint;
-  VPlace: IGeoCodePlacemark;
-  VList: IInterfaceList;
+  VPlace: IVectorDataItem;
+  VList: IInterfaceListSimple;
   VFormatSettings: TFormatSettings;
-  VStr: string;
+  VRegExpr: TRegExpr;
 begin
-  sfulldesc := '';
-  sdesc := '';
   if AResult.Data.Size <= 0 then begin
     raise EParserError.Create(SAS_ERR_EmptyServerResponse);
   end;
 
-  SetLength(Vstr, AResult.Data.Size);
-  Move(AResult.Data.Buffer^, Vstr[1], AResult.Data.Size);
+  SetLength(VStr, AResult.Data.Size);
+  Move(AResult.Data.Buffer^, VStr[1], AResult.Data.Size);
+
   VFormatSettings.DecimalSeparator := '.';
-  VList := TInterfaceList.Create;
-  i := PosEx('<div style="overflow: hidden; width:100%;width:3px;height:2px;"', VStr, 1);
-  while (PosEx('<div class="sdiv" onclick="parent.jevals=', VStr, i) > i) and (i > 0) do begin
-    j := i;
 
-    //    зум для внешней ссылки оставлен для потом
-    //    i := PosEx('parent.zoom_from_inf(', AStr, j);
-    //    i := PosEx(',', AStr, i);
-    //    i := PosEx(',', AStr, i);
-    //    j := PosEx(')', AStr, i);
-    //    VZoom:=Copy(AStr, i + 1, j - (i + 1));
+  VList := TInterfaceListSimple.Create;
 
-    i := PosEx('{parent.searchvis(', VStr, j);
-    j := PosEx(',', VStr, i + 18);
-    slon := Copy(VStr, i + 18, j - (i + 18));
+  VRegExpr := TRegExpr.Create;
+  try
+    VRegExpr.Expression := cSearchResultItemRegEx;
 
-    i := j;
-    j := PosEx(')', VStr, i + 1);
-    slat := Copy(VStr, i + 1, j - (i + 1));
+    VRegExpr.ModifierI := True;
+    VRegExpr.ModifierM := True;
 
-    i := PosEx('<span class="sname">', VStr, j);
-    j := PosEx('<', VStr, i + 20);
-    sname := Utf8ToAnsi(Copy(VStr, i + 20, j - (i + 20)));
+    if VRegExpr.Exec(Utf8ToAnsi(VStr)) then begin
+      repeat
+        try
+          VPoint.Y := StrToFloat(VRegExpr.Match[1], VFormatSettings);
+          VPoint.X := StrToFloat(VRegExpr.Match[2], VFormatSettings);
+        except
+          raise EParserError.CreateFmt(SAS_ERR_CoordParseError, [VRegExpr.Match[1], VRegExpr.Match[2]]);
+        end;
 
-    i := PosEx('<span class="desc">', VStr, j);
-    j := PosEx('<', VStr, i + 19);
-    sdesc := Utf8ToAnsi(Copy(VStr, i + 19, j - (i + 19)));
+        VName := StringReplace(VRegExpr.Match[3], '&quot;', '''', [rfReplaceAll]);
+        VDesc := StringReplace(VRegExpr.Match[4], '&quot;', '''', [rfReplaceAll]);
 
-    //    оставим до лучших времён
-    //    sfulldesc:='http://www.wikimapia.org/#lat='+slat+'&lon='+slon+'&z='+VZoom;
+        VPlace := PlacemarkFactory.Build(VPoint, Trim(VName), Trim(VDesc), '', 4);
+        VList.Add(VPlace);
 
-    try
-      VPoint.Y := StrToFloat(slat, VFormatSettings);
-      VPoint.X := StrToFloat(slon, VFormatSettings);
-    except
-      raise EParserError.CreateFmt(SAS_ERR_CoordParseError, [slat, slon]);
+      until not VRegExpr.ExecNext;
     end;
 
-    if not ((slat = '0') or (slon = '0')) then begin // пропускаем точки без координат
-      VPlace := TGeoCodePlacemark.Create(VPoint, sname, sdesc, sfulldesc, 4);
-      VList.Add(VPlace);
-    end;
+    Result := VList;
 
+  finally
+    VRegExpr.Free;
   end;
-  Result := VList;
 end;
 
 function TGeoCoderByWikiMapia.PrepareRequest(
@@ -138,24 +159,40 @@ function TGeoCoderByWikiMapia.PrepareRequest(
   const ALocalConverter: ILocalCoordConverter
 ): IDownloadRequest;
 var
-  VSearch: String;
+  VSearch: AnsiString;
+  VHeaders: AnsiString;
+  VPostData: AnsiString;
   VConverter: ICoordConverter;
   VZoom: Byte;
-  VMapRect: TDoubleRect;
-  VLonLatRect: TDoubleRect;
+  VMapCenter: TDoublePoint;
 begin
-
-  VSearch := ASearch;
   VConverter := ALocalConverter.GetGeoConverter;
   VZoom := ALocalConverter.GetZoom;
-  VMapRect := ALocalConverter.GetRectInMapPixelFloat;
-  VConverter.CheckPixelRectFloat(VMapRect, VZoom);
-  VLonLatRect := VConverter.PixelRectFloat2LonLatRect(VMapRect, VZoom);
+  VMapCenter := VConverter.LonLat2TilePosFloat(ALocalConverter.GetCenterLonLat, VZoom);
 
-  //http://wikimapia.org/search/?q=%D0%9A%D1%80%D0%B0%D1%81%D0%BD%D0%BE%D0%B4%D0%B0%D1%80
+  VSearch := URLEncode(AnsiToUtf8(ASearch));
+
+  VPostData :=
+    'y=' + ALIntToStr(Round(VMapCenter.Y)) + '&' +
+    'x=' + ALIntToStr(Round(VMapCenter.X)) + '&' +
+    'z=' + ALIntToStr(VZoom) + '&' +
+    'qu=' + VSearch + '&' +
+    'jtype=simple' + '&' +
+    'start=0' + '&' +
+    'try=0';
+
+  VHeaders :=
+    'Content-Type: application/x-www-form-urlencoded' + #13#10 +
+    'Referer: http://wikimapia.org/' + #13#10 +
+    'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' + #13#10 +
+    'Accept-Language: ru-RU,ru;q=0.8,en-US;q=0.5,en;q=0.3';
+
   Result :=
-    PrepareRequestByURL(
-      'http://wikimapia.org/search/?q=' + URLEncode(AnsiToUtf8(VSearch))
+    TDownloadPostRequest.Create(
+      'http://wikimapia.org/search/?q=' + VSearch,
+      VHeaders,
+      TBinaryData.CreateByAnsiString(VPostData) as IBinaryData,
+      Self.InetSettings.GetStatic
     );
 end;
 

@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_TerrainProviderList;
@@ -27,11 +27,11 @@ uses
   ActiveX,
   i_GUIDSet,
   i_Notifier,
+  i_CoordConverterFactory,
   i_TerrainProviderList,
   i_TerrainProviderListElement,
   i_PathConfig,
   i_ProjConverter,
-  i_GlobalCacheConfig,
   u_BaseInterfacedObject;
 
 type
@@ -48,7 +48,6 @@ type
     procedure Add(const AItem: ITerrainProviderListElement);
   public
     constructor Create;
-    destructor Destroy; override;
   end;
 
   TTerrainProviderListSimple = class(TTerrainProviderListBase)
@@ -60,10 +59,11 @@ type
   public
     constructor Create(
       const AProjConverterFactory: IProjConverterFactory;
+      const ACoordConverterFactory: ICoordConverterFactory;
       const ATerrainDataPath: IPathConfig;
-      const ACacheConfig: IGlobalCacheConfig
+      const AGECachePath: IPathConfig;
+      const AGCCachePath: IPathConfig
     );
-    destructor Destroy; override;
   end;
 
 implementation
@@ -74,6 +74,7 @@ uses
   c_TerrainProviderGUID,
   u_TerrainProviderListElement,
   u_TerrainProviderByGE,
+  u_TerrainProviderByGoogleEarth,
   u_ExternalTerrainsProvider,
   u_Notifier,
   u_Synchronizer,
@@ -83,8 +84,10 @@ uses
 
 constructor TTerrainProviderListSimple.Create(
   const AProjConverterFactory: IProjConverterFactory;
+  const ACoordConverterFactory: ICoordConverterFactory;
   const ATerrainDataPath: IPathConfig;
-  const ACacheConfig: IGlobalCacheConfig
+  const AGECachePath: IPathConfig;
+  const AGCCachePath: IPathConfig
 );
 var
   VItem: ITerrainProviderListElement;
@@ -98,7 +101,7 @@ begin
     TTerrainProviderListElement.Create(
       cTerrainProviderGoogleEarthGUID,
       'GoogleEarth',
-      TTerrainProviderByGoogleEarth.Create(ACacheConfig)
+      TTerrainProviderByGoogleEarth.Create(ACoordConverterFactory, AGECachePath)
     );
   Add(VItem);
 
@@ -106,19 +109,12 @@ begin
     TTerrainProviderListElement.Create(
       cTerrainProviderGeoCacherGUID,
       'GeoCacher',
-      TTerrainProviderByGeoCacher.Create(ACacheConfig)
+      TTerrainProviderByGeoCacher.Create(ACoordConverterFactory, AGCCachePath)
     );
   Add(VItem);
 
   // make external items
   LoadFromIni;
-end;
-
-destructor TTerrainProviderListSimple.Destroy;
-begin
-  FProjConverterFactory := nil;
-  FTerrainDataPath := nil;
-  inherited;
 end;
 
 procedure TTerrainProviderListSimple.LoadFromIni;
@@ -200,16 +196,12 @@ end;
 constructor TTerrainProviderListBase.Create;
 begin
   inherited Create;
-  FCS := MakeSyncRW_Std(Self, TRUE);
+  FCS := GSync.SyncStdRecursive.Make(Self.ClassName);
   FList := TGUIDInterfaceSet.Create(False);
-  FAddNotifier := TNotifierBase.Create;
-end;
-
-destructor TTerrainProviderListBase.Destroy;
-begin
-  FList := nil;
-  FCS := nil;
-  inherited;
+  FAddNotifier :=
+    TNotifierBase.Create(
+      GSync.SyncVariable.Make(Self.ClassName + 'Notifier')
+    );
 end;
 
 procedure TTerrainProviderListBase.Add(const AItem: ITerrainProviderListElement);

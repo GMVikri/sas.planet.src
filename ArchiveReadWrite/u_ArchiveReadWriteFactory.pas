@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_ArchiveReadWriteFactory;
@@ -57,7 +57,6 @@ type
     function CreateRarReaderByStream(const AStream: TStream): IArchiveReader;
   public
     constructor Create;
-    destructor Destroy; override;
   end;
 
 implementation
@@ -72,11 +71,6 @@ uses
 constructor TArchiveReadWriteFactory.Create;
 begin
   inherited Create;
-end;
-
-destructor TArchiveReadWriteFactory.Destroy;
-begin
-  inherited Destroy;
 end;
 
 function TArchiveReadWriteFactory.CreateZipReaderByName(

@@ -1,3 +1,23 @@
+{******************************************************************************}
+{* SAS.Planet (SAS.Планета)                                                   *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
+{* This program is free software: you can redistribute it and/or modify       *}
+{* it under the terms of the GNU General Public License as published by       *}
+{* the Free Software Foundation, either version 3 of the License, or          *}
+{* (at your option) any later version.                                        *}
+{*                                                                            *}
+{* This program is distributed in the hope that it will be useful,            *}
+{* but WITHOUT ANY WARRANTY; without even the implied warranty of             *}
+{* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the              *}
+{* GNU General Public License for more details.                               *}
+{*                                                                            *}
+{* You should have received a copy of the GNU General Public License          *}
+{* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
+{*                                                                            *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
+{******************************************************************************}
+
 unit u_MultiPoligonParser;
 
 interface
@@ -86,12 +106,20 @@ JSON geometry:
 implementation
 
 uses
-  u_GeoFun,
-  u_GeoToStr;
+  SysUtils,
+  u_GeoFunc,
+  u_GeoToStrFunc;
+
+{$IF CompilerVersion < 23}
+function CharInSet(const AChar: AnsiChar; const ASet: TSysCharSet): Boolean; inline;
+begin
+  Result := (AChar in ASet)
+end;
+{$IFEND}
 
 function _IsCoord(const ASym: Char): Boolean;
 begin
-  Result := (ASym in ['0','1'..'9','.','-']);
+  Result := CharInSet(ASym, ['0','1'..'9','.','-']);
 end;
 
 function ParsePointsToAggregator(
@@ -108,7 +136,7 @@ var
   VPos, VEnd, L: Integer;
   VOk: Byte;
   VPoint: TDoublePoint;
-  VXYDelimiters: set of char;
+  VXYDelimiters: TSysCharSet;
 begin
   Result := 0;
   if (0=Length(ASourceText)) then
@@ -135,14 +163,14 @@ begin
 
     // extract coords
     while (VEnd<=L) do begin
-      if (ASourceText[VEnd] in VXYDelimiters) then begin
+      if CharInSet(ASourceText[VEnd], VXYDelimiters) then begin
         // space between X and Y - get X
         VPoint.X := StrPointToFloat(System.Copy(ASourceText, VPos, VEnd-VPos));
         // skip delimiters
-        while (VEnd<=L) and (ASourceText[VEnd] in VXYDelimiters) do
+        while (VEnd<=L) and CharInSet(ASourceText[VEnd], VXYDelimiters) do
           Inc(VEnd);
         // skip spaces
-        while (VEnd<=L) and (ASourceText[VEnd] in [#32,#160,#13,#10]) do
+        while (VEnd<=L) and CharInSet(ASourceText[VEnd], [#32,#160,#13,#10]) do
           Inc(VEnd);
         // first nonspace
         VPos := VEnd;
@@ -151,6 +179,9 @@ begin
         // numeric - goto next
         Inc(VEnd);
       end else begin
+        if VPos = VEnd then begin
+          Break;
+        end;
         // first non-numeric - get Y
         VPoint.Y := StrPointToFloat(System.Copy(ASourceText, VPos, VEnd-VPos));
         VOk := VOk or $02;
@@ -180,7 +211,7 @@ begin
       Exit;
 
     if AFromJSON then begin
-      if System.Copy(ASourceText, VEnd, VPos-VEnd)=c_JSON_NewSegment then begin
+      if System.Copy(ASourceText, VEnd, VPos - VEnd)=c_JSON_NewSegment then begin
         // start new segment
         // TODO: make new holes when available
         ADoublePointsAggregator.Add(CEmptyDoublePoint);

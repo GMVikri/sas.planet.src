@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GpsSystem;
@@ -159,6 +159,8 @@ constructor TGpsSystem.Create(
   const ATimerNoifier: INotifierTime;
   const APerfCounterList: IInternalPerformanceCounterList
 );
+var
+  VSync: IReadWriteSync;
 begin
   inherited Create;
   FAppStartedNotifier := AAppStartedNotifier;
@@ -172,7 +174,7 @@ begin
   FAppStartedListener := TNotifyNoMmgEventListener.Create(Self.OnAppStarted);
   FAppClosingListener := TNotifyNoMmgEventListener.Create(Self.OnAppClosing);
   FLinksList := TListenerNotifierLinksList.Create;
-  FCS := MakeSyncRW_Var(Self, False);
+  FCS := GSync.SyncVariable.Make(Self.ClassName);
   FModuleState := msDisconnected;
   FWasError := False;
   FWasTimeOut := False;
@@ -180,13 +182,14 @@ begin
   FInternalState := isDisconnected;
   FLastDataReceiveTick := 0;
 
-  FConnectingNotifier := TNotifierBase.Create;
-  FConnectedNotifier := TNotifierBase.Create;
-  FDisconnectingNotifier := TNotifierBase.Create;
-  FDisconnectedNotifier := TNotifierBase.Create;
-  FTimeOutNotifier := TNotifierBase.Create;
-  FConnectErrorNotifier := TNotifierBase.Create;
-  FDataReciveNotifier := TNotifierBase.Create;
+  VSync := GSync.SyncVariable.Make(Self.ClassName + 'Notifiers');
+  FConnectingNotifier := TNotifierBase.Create(VSync);
+  FConnectedNotifier := TNotifierBase.Create(VSync);
+  FDisconnectingNotifier := TNotifierBase.Create(VSync);
+  FDisconnectedNotifier := TNotifierBase.Create(VSync);
+  FTimeOutNotifier := TNotifierBase.Create(VSync);
+  FConnectErrorNotifier := TNotifierBase.Create(VSync);
+  FDataReciveNotifier := TNotifierBase.Create(VSync);
 
   FLinksList.Add(
     TNotifyNoMmgEventListener.Create(Self.OnConfigChange),
@@ -203,11 +206,11 @@ end;
 
 destructor TGpsSystem.Destroy;
 begin
-  if FAppStartedNotifier <> nil then begin
+  if Assigned(FAppStartedNotifier) and Assigned(FAppStartedListener) then begin
     FAppStartedNotifier.Remove(FAppStartedListener);
     FAppStartedNotifier := nil;
   end;
-  if FAppClosingNotifier <> nil then begin
+  if Assigned(FAppClosingNotifier) and Assigned(FAppClosingListener) then begin
     FAppClosingNotifier.Remove(FAppClosingListener);
     FAppClosingNotifier := nil;
   end;

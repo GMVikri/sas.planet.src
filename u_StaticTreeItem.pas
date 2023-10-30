@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_StaticTreeItem;
@@ -23,7 +23,7 @@ unit u_StaticTreeItem;
 interface
 
 uses
-  Classes,
+  i_InterfaceListStatic,
   i_StaticTreeItem,
   u_BaseInterfacedObject;
 
@@ -33,7 +33,7 @@ type
     FData: IInterface;
     FName: string;
     FGroupName: string;
-    FSubItems: IInterfaceList;
+    FSubItems: IInterfaceListStatic;
   private
     function GetData: IInterface;
     function GetName: string;
@@ -45,7 +45,7 @@ type
       const AData: IInterface;
       const AName: string;
       const AGroupName: string;
-      const ASubItems: IInterfaceList
+      const ASubItems: IInterfaceListStatic
     );
   end;
 
@@ -56,7 +56,7 @@ implementation
 constructor TStaticTreeItem.Create(
   const AData: IInterface;
   const AName, AGroupName: string;
-  const ASubItems: IInterfaceList
+  const ASubItems: IInterfaceListStatic
 );
 begin
   inherited Create;

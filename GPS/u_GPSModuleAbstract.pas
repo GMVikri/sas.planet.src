@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit u_GPSModuleAbstract;
@@ -24,8 +24,6 @@ interface
 
 uses
   Windows,
-  ActiveX,
-  Classes,
   SysUtils,
   i_Notifier,
   t_GeoTypes,
@@ -37,28 +35,6 @@ uses
   u_BaseInterfacedObject;
 
 type
-  TSatellitesInternalList = class
-  private
-    FList: TList;
-    function Get(Index: Integer): IGPSSatelliteInfo;
-    procedure Put(
-      Index: Integer;
-      const Item: IGPSSatelliteInfo
-    );
-    procedure SetCapacity(NewCapacity: Integer);
-    procedure SetCount(NewCount: Integer);
-    function GetCapacity: Integer;
-    function GetCount: Integer;
-    function GetList: PUnknownList;
-  public
-    constructor Create;
-    destructor Destroy; override;
-    property Capacity: Integer read GetCapacity write SetCapacity;
-    property Count: Integer read GetCount write SetCount;
-    property Items[Index: Integer]: IGPSSatelliteInfo read Get write Put; default;
-    property List: PUnknownList read GetList;
-  end;
-
   TGPSModuleAbstract = class(TBaseInterfacedObject, IGPSModule)
   private
     FGPSPositionFactory: IGPSPositionFactory;
@@ -69,8 +45,8 @@ type
     FGPSPosChanged: Boolean;
     FGPSSatChanged: Boolean;
 
-    FSatellitesGP: TSatellitesInternalList;
-    FSatellitesGL: TSatellitesInternalList;
+    FSatellitesGP: IGPSSatelliteInfoList;
+    FSatellitesGL: IGPSSatelliteInfoList;
 
     FDataReciveNotifier: INotifierInternal;
 
@@ -84,7 +60,7 @@ type
   protected
     FSingleGPSData: TSingleGPSData;
     FFixSatsALL: TVSAGPS_FIX_ALL;
-    function GetSatellitesListByTalkerID(const ATalkerID: AnsiString): TSatellitesInternalList;
+    function GetSatellitesListByTalkerID(const ATalkerID: AnsiString): IGPSSatelliteInfoList;
     function SerializeSatsInfo: AnsiString;
   protected
     property DataReciveNotifier: INotifierInternal read FDataReciveNotifier;
@@ -222,46 +198,64 @@ type
 implementation
 
 uses
-  u_Synchronizer,
+  ALString,
   vsagps_public_sats_info,
+  i_InterfaceListSimple,
+  u_InterfaceListSimple,
+  u_Synchronizer,
   u_Notifier;
+
+type
+  TGPSSatelliteInfoList = class(TBaseInterfacedObject, IGPSSatelliteInfoList)
+  private
+    FList: IInterfaceListSimple;
+  private
+    { IGPSSatelliteInfoList }
+    function GetCount: Integer;
+    procedure SetCount(const ANewCount: Integer);
+    function GetItem(const AIndex: Integer): IGPSSatelliteInfo;
+    procedure SetItem(const AIndex: Integer; const AItem: IGPSSatelliteInfo);
+  public
+    constructor Create(const ACapacity: Integer);
+  end;
 
 { TGPSPositionUpdatable }
 
 constructor TGPSModuleAbstract.Create(const APositionFactory: IGPSPositionFactory);
+var
+  VSync: IReadWriteSync;
 begin
   inherited Create;
   FGPSPositionFactory := APositionFactory;
 
-  FCSGPSData := MakeSyncRW_Var(Self, False);
+  FCSGPSData := GSync.SyncVariable.Make(Self.ClassName);
 
   FNotifiedTicks := 0;
   FGPSPosChanged := FALSE;
   FGPSSatChanged := FALSE;
   FSingleGPSData.Init;
 
-  FSatellitesGP := TSatellitesInternalList.Create;
-  FSatellitesGP.Capacity := 32;
-  FSatellitesGL := TSatellitesInternalList.Create;
-  FSatellitesGL.Capacity := 24;
+  FSatellitesGP := TGPSSatelliteInfoList.Create(32);
+  FSatellitesGL := TGPSSatelliteInfoList.Create(24);
 
   FLastStaticPosition := nil;
-  FConnectErrorNotifier := TNotifierBase.Create;
+  VSync := GSync.SyncVariable.Make(Self.ClassName + 'Notifiers');
+  FConnectErrorNotifier := TNotifierBase.Create(VSync);
 
-  FConnectingNotifier := TNotifierBase.Create;
-  FConnectedNotifier := TNotifierBase.Create;
-  FDisconnectingNotifier := TNotifierBase.Create;
-  FDisconnectedNotifier := TNotifierBase.Create;
+  FConnectingNotifier := TNotifierBase.Create(VSync);
+  FConnectedNotifier := TNotifierBase.Create(VSync);
+  FDisconnectingNotifier := TNotifierBase.Create(VSync);
+  FDisconnectedNotifier := TNotifierBase.Create(VSync);
 
-  FDataReciveNotifier := TNotifierBase.Create;
-  FTimeOutNotifier := TNotifierBase.Create;
+  FDataReciveNotifier := TNotifierBase.Create(VSync);
+  FTimeOutNotifier := TNotifierBase.Create(VSync);
 end;
 
 destructor TGPSModuleAbstract.Destroy;
 begin
   //FreeAndNil(FCS);
-  FreeAndNil(FSatellitesGP);
-  FreeAndNil(FSatellitesGL);
+  FSatellitesGP := nil;
+  FSatellitesGL := nil;
 
   FLastStaticPosition := nil;
   FGPSPositionFactory := nil;
@@ -330,10 +324,8 @@ begin
         // make new sats
         Result := FGPSPositionFactory.BuildPosition(@FSingleGPSData,
           FGPSPositionFactory.BuildSatellitesInView(
-            FSatellitesGP.Count,
-            FSatellitesGP.List,
-            FSatellitesGL.Count,
-            FSatellitesGL.List
+            FSatellitesGP,
+            FSatellitesGL
           )
         );
       end;
@@ -355,9 +347,9 @@ begin
   end;
 end;
 
-function TGPSModuleAbstract.GetSatellitesListByTalkerID(const ATalkerID: AnsiString): TSatellitesInternalList;
+function TGPSModuleAbstract.GetSatellitesListByTalkerID(const ATalkerID: AnsiString): IGPSSatelliteInfoList;
 begin
-  if SameText(ATalkerID, nmea_ti_GLONASS) then begin
+  if ALSameText(ATalkerID, nmea_ti_GLONASS) then begin
     Result := FSatellitesGL;
   end else begin
     Result := FSatellitesGP;
@@ -382,7 +374,7 @@ function TGPSModuleAbstract.SerializeSatsInfo: AnsiString;
   end;
 
   procedure _DoForSats(
-  const lst: TSatellitesInternalList;
+  const lst: IGPSSatelliteInfoList;
   const sats_prefix: AnsiString
   );
   var
@@ -391,7 +383,7 @@ function TGPSModuleAbstract.SerializeSatsInfo: AnsiString;
     bsp: TSingleSatFixibilityData;
     ssp: TSingleSatSkyData;
     si: IGPSSatelliteInfo;
-    s: AnsiString;
+    VSingleInfo: AnsiString;
   begin
     si := nil;
     v_done := 0;
@@ -405,14 +397,14 @@ function TGPSModuleAbstract.SerializeSatsInfo: AnsiString;
               if SatAvailableForShow(sat_info.svid, snr, status) then begin
                 si.GetSkySatelliteParams(@ssp);
                 // to string
-                s := SerializeSingleSatInfo(@bsp, @ssp);
+                VSingleInfo := SerializeSingleSatInfo(@bsp, @ssp);
                 // prefix to result
                 if (0 = v_done) then begin
                   _AddToResult(sats_prefix);
                 end;
                 Inc(v_done);
                 // info to result
-                _AddToResult(s);
+                _AddToResult(VSingleInfo);
               end;
             end;
           end;
@@ -428,7 +420,7 @@ begin
   // for glonass
   _DoForSats(FSatellitesGL, nmea_ti_GLONASS);
   // Nmea23_Mode at the end of line
-  Result := Result + IntToHex(Ord(FSingleGPSData.DGPS.Nmea23_Mode), 2);
+  Result := Result + ALIntToHex(Ord(FSingleGPSData.DGPS.Nmea23_Mode), 2);
 end;
 
 procedure TGPSModuleAbstract.UnLockGPSData(
@@ -675,7 +667,7 @@ procedure TGPSModuleAbstract._UpdateSatsInView(
   const ACount: Byte
 );
 var
-  f: TSatellitesInternalList;
+  f: IGPSSatelliteInfoList;
 begin
   f := GetSatellitesListByTalkerID(ATalkerID);
   if f.Count <> ACount then begin
@@ -699,7 +691,7 @@ var
   VSatteliteChanged: Boolean;
   VData: TSingleSatFixibilityData;
   VSky: TSingleSatSkyData;
-  f: TSatellitesInternalList;
+  f: IGPSSatelliteInfoList;
 begin
   VSatteliteChanged := False;
   f := GetSatellitesListByTalkerID(ATalkerID);
@@ -836,74 +828,43 @@ begin
   end;
 end;
 
-{ TSatellitesInternalList }
+{ TGPSSatelliteInfoList }
 
-constructor TSatellitesInternalList.Create;
+constructor TGPSSatelliteInfoList.Create(const ACapacity: Integer);
 begin
   inherited Create;
-  FList := TList.Create;
-  ;
+  FList := TInterfaceListSimple.Create;
+  FList.Capacity := ACapacity;
 end;
 
-destructor TSatellitesInternalList.Destroy;
-begin
-  SetCount(0);
-  FreeAndNil(FList);
-  inherited;
-end;
-
-function TSatellitesInternalList.Get(Index: Integer): IGPSSatelliteInfo;
-begin
-  Result := IGPSSatelliteInfo(FList.Items[Index]);
-end;
-
-function TSatellitesInternalList.GetCapacity: Integer;
-begin
-  Result := FList.Capacity;
-end;
-
-function TSatellitesInternalList.GetCount: Integer;
+function TGPSSatelliteInfoList.GetCount: Integer;
 begin
   Result := FList.Count;
 end;
 
-function TSatellitesInternalList.GetList: PUnknownList;
+function TGPSSatelliteInfoList.GetItem(const AIndex: Integer): IGPSSatelliteInfo;
 begin
-  Result := PUnknownList(FList.List);
+  if (AIndex >= 0) and (AIndex < FList.Count) then
+    Result := IGPSSatelliteInfo(FList[AIndex])
+  else
+    Result := nil;
 end;
 
-procedure TSatellitesInternalList.Put(
-  Index: Integer;
-  const Item: IGPSSatelliteInfo
+procedure TGPSSatelliteInfoList.SetCount(const ANewCount: Integer);
+begin
+  FList.Count := ANewCount;
+end;
+
+procedure TGPSSatelliteInfoList.SetItem(
+  const AIndex: Integer;
+  const AItem: IGPSSatelliteInfo
 );
 begin
-  if (Index >= 0) and (Index < FList.Count) then begin
-    IInterface(FList.List[Index]) := Item;
-  end;
-end;
-
-procedure TSatellitesInternalList.SetCapacity(NewCapacity: Integer);
-var
-  i: Integer;
-begin
-  if FList.Count > NewCapacity then begin
-    for i := NewCapacity to FList.Count - 1 do begin
-      IInterface(FList.List[i]) := nil;
-    end;
-  end;
-  FList.Capacity := NewCapacity;
-end;
-
-procedure TSatellitesInternalList.SetCount(NewCount: Integer);
-var
-  i: Integer;
-begin
-  if FList.Count > NewCount then begin
-    for i := NewCount to FList.Count - 1 do begin
-      IInterface(FList.List[i]) := nil;
-    end;
-  end;
-  FList.Count := NewCount;
+  if (AIndex < 0) then
+    Exit;
+  if (AIndex >= FList.Count) then
+    SetCount(AIndex + 1);
+  FList[AIndex] := AItem;
 end;
 
 end.

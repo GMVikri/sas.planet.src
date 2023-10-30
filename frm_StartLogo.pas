@@ -1,6 +1,6 @@
 {******************************************************************************}
 {* SAS.Planet (SAS.Планета)                                                   *}
-{* Copyright (C) 2007-2012, SAS.Planet development team.                      *}
+{* Copyright (C) 2007-2014, SAS.Planet development team.                      *}
 {* This program is free software: you can redistribute it and/or modify       *}
 {* it under the terms of the GNU General Public License as published by       *}
 {* the Free Software Foundation, either version 3 of the License, or          *}
@@ -14,8 +14,8 @@
 {* You should have received a copy of the GNU General Public License          *}
 {* along with this program.  If not, see <http://www.gnu.org/licenses/>.      *}
 {*                                                                            *}
-{* http://sasgis.ru                                                           *}
-{* az@sasgis.ru                                                               *}
+{* http://sasgis.org                                                          *}
+{* info@sasgis.org                                                            *}
 {******************************************************************************}
 
 unit frm_StartLogo;
@@ -34,6 +34,7 @@ uses
   i_ConfigDataProvider,
   i_StartUpLogoConfig,
   i_Listener,
+  i_BuildInfo,
   i_NotifierOperation,
   u_CommonFormAndFrameParents;
 
@@ -48,6 +49,7 @@ type
     procedure FormShow(Sender: TObject);
     procedure imgLogoClick(Sender: TObject);
   private
+    FBuildInfo: IBuildInfo;
     FReadyToHide: Boolean;
     FContentTypeManager: IContentTypeManager;
     FConfigData: IConfigDataProvider;
@@ -57,6 +59,7 @@ type
   private
     constructor Create(
       const ALanguageManager: ILanguageManager;
+      const ABuildInfo: IBuildInfo;
       const AAppStartedNotifier: INotifierOneOperation;
       const AContentTypeManager: IContentTypeManager;
       const AConfigData: IConfigDataProvider
@@ -66,6 +69,7 @@ type
 
     class procedure ShowLogo(
       const ALanguageManager: ILanguageManager;
+      const ABuildInfo: IBuildInfo;
       const AAppStartedNotifier: INotifierOneOperation;
       const AContentTypeManager: IContentTypeManager;
       const AConfigData: IConfigDataProvider;
@@ -78,7 +82,6 @@ implementation
 
 uses
   Types,
-  c_SasVersion,
   i_Bitmap32Static,
   u_ConfigProviderHelpers,
   u_ListenerByEvent,
@@ -91,12 +94,17 @@ var
 
 constructor TfrmStartLogo.Create(
   const ALanguageManager: ILanguageManager;
+  const ABuildInfo: IBuildInfo;
   const AAppStartedNotifier: INotifierOneOperation;
   const AContentTypeManager: IContentTypeManager;
   const AConfigData: IConfigDataProvider
 );
 begin
   inherited Create(ALanguageManager);
+
+  FBuildInfo := ABuildInfo;
+  Assert(Assigned(FBuildInfo));
+
   FAppStartedNotifier := AAppStartedNotifier;
   FContentTypeManager := AContentTypeManager;
   FConfigData := AConfigData;
@@ -106,7 +114,7 @@ end;
 
 destructor TfrmStartLogo.Destroy;
 begin
-  if FAppStartedNotifier <> nil then begin
+  if Assigned(FAppStartedNotifier) and Assigned(FAppStartedListener) then begin
     FAppStartedNotifier.Remove(FAppStartedListener);
     FAppStartedNotifier := nil;
     FAppStartedListener := nil;
@@ -140,7 +148,7 @@ begin
     VBitmapSize.Y := 276;
   end;
   imgLogo.Bitmap.SetSize(VBitmapSize.X, VBitmapSize.Y);
-  lblVersion.Caption:='v '+SASVersion;
+  lblVersion.Caption := 'v ' + FBuildInfo.GetVersionDetaled;
   FReadyToHide := False;
   if FAppStartedNotifier.IsExecuted then begin
     OnAppStarted;
@@ -169,6 +177,7 @@ end;
 
 class procedure TfrmStartLogo.ShowLogo(
   const ALanguageManager: ILanguageManager;
+  const ABuildInfo: IBuildInfo;
   const AAppStartedNotifier: INotifierOneOperation;
   const AContentTypeManager: IContentTypeManager;
   const AConfigData: IConfigDataProvider;
@@ -178,6 +187,7 @@ begin
   if AConfig.IsShowLogo then begin
     TfrmStartLogo.Create(
       ALanguageManager,
+      ABuildInfo,
       AAppStartedNotifier,
       AContentTypeManager,
       AConfigData
